@@ -11,14 +11,17 @@ private:
     int n;
 
 public:
+    std::string r;
+
     Graph(int n);
 
     void add_edge(int u, int v, std::string w);
     void remove_edge(int u, int v, std::string w);
+    void merge_vertex(int u, int v, std::string w);
+    void simplify();
     void print() const;
+    int degree(int) const;
     bool is_connected() const;
-
-    // Возвращаем TreeResult, но он объявлен позже
     struct TreeResult;  // ← forward declaration
 
     TreeResult make_tree() const;

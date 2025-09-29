@@ -6,11 +6,6 @@
 int main() {
     std::ifstream inFile("input.txt");
 
-    if (!inFile.is_open()) {
-        std::cerr << "Error: Could not open file 'input.txt'." << std::endl;
-        return 1;
-    }
-
     int ver, edg;
     inFile >> ver >> edg;
 
@@ -32,9 +27,25 @@ int main() {
         std::cout << "Graph is not connected." << std::endl;
         return 0;
     }
+    gr.simplify();
+    std::cout << "\nSimplyfied:\n";
+    gr.print();
+    std::cout << std::endl;
+    
+    Graph gr1 = gr;
+    gr1.remove_edge(0, 1, "R1");
+    gr1.r = "R1";
+    Graph gr2 = gr1;
+    gr2.merge_vertex(0, 1, "R1");
+    // gr1.simplify();
+    // gr2.simplify();
+    gr1.print();
+    std::cout << gr1.degree(2) << std::endl;
+    gr2.print();
 
-    Graph::TreeResult tree = gr.make_tree();
-    tree.print();
+
+    // Graph::TreeResult tree = gr.make_tree();
+    // tree.print();
 
     return 0;
 }
