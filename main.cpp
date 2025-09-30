@@ -27,8 +27,10 @@ int main() {
         std::cout << "Graph is not connected." << std::endl;
         return 0;
     }
+    std::cout << gr.degree(1) << std::endl;
     gr.simplify();
     std::cout << "\nSimplyfied:\n";
+    
     gr.print();
     std::cout << std::endl;
     
@@ -37,10 +39,11 @@ int main() {
     gr1.r = "R1";
     Graph gr2 = gr1;
     gr2.merge_vertex(0, 1, "R1");
-    // gr1.simplify();
-    // gr2.simplify();
+    gr1.simplify();
+    gr2.simplify();
     gr1.print();
-    std::cout << gr1.degree(2) << std::endl;
+    
+    std::cout << std::endl;
     gr2.print();
 
 

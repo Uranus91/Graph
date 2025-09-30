@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <set>
 
+
 Graph::Graph(int n) : n(n), adj(n), r("1") {}
 // Реализация методов Graph
 void Graph::add_edge(int u, int v, std::string w) {
@@ -85,7 +86,7 @@ void Graph::simplify() {
         for (int i = 0; i < n; i++) {
             if (adj[i].empty())
                 continue;
-            std::set<std::pair<int, std::string>> neighbors;
+            std::multiset<std::pair<int, std::string>> neighbors;
             for(const auto& edge : adj[i]) {
                 neighbors.insert({edge.first, edge.second});
             }
@@ -102,13 +103,12 @@ void Graph::simplify() {
                 auto it = neighbors.begin();
                 auto [u, w1] = *it++;
                 auto [w, w2] = *it;
-                if (u != w) {
-                    remove_edge(i, u, w1);
-                    remove_edge(i, w, w2);
-                    add_edge(u, w, w1 + " + " + w2);
-                    changed = true;
-                    break;
-                }
+                
+                remove_edge(i, u, w1);
+                remove_edge(i, w, w2);
+                add_edge(u, w, w1 + " + " + w2);
+                changed = true;
+                break;
             }
         }
     }
