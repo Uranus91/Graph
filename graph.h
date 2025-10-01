@@ -12,15 +12,20 @@ private:
 
 public:
     std::string r;
-
+    bool finished;
     Graph(int n);
 
     void add_edge(int u, int v, std::string w);
     void remove_edge(int u, int v, std::string w);
     void merge_vertex(int u, int v, std::string w);
     void simplify();
+    void takeaway();
+    void paralel();
+
+    std::string recursive_algorithm();
+
     void print() const;
-    int degree(int) const;
+    int vertex_count() const;
     bool is_connected() const;
     struct TreeResult;  // ← forward declaration
 

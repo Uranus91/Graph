@@ -6,7 +6,7 @@
 #include <set>
 
 
-Graph::Graph(int n) : n(n), adj(n), r("1") {}
+Graph::Graph(int n) : n(n), adj(n), r(""), finished(false) {}
 // Реализация методов Graph
 void Graph::add_edge(int u, int v, std::string w) {
     if (u < 0 || u >= n || v < 0 || v >= n) return;
@@ -38,8 +38,7 @@ void Graph::remove_edge(int u, int v, std::string w) {
 void Graph::merge_vertex(int u, int v, std::string weight) {
     if (u < 0 || u >= n || v < 0 || v >= n) return;
     if (u == v) return;
-    
-    // Удаляем ребро u --weight-- v
+
     remove_edge(u, v, weight);
     
     // Создаем временную копию списка смежности v
@@ -59,7 +58,6 @@ void Graph::merge_vertex(int u, int v, std::string weight) {
                 ++it;
             }
         }
-        
         // Добавляем ребро neighbor -> u (если neighbor не u)
         if (neighbor != u) {
             add_edge(u, neighbor, w);
@@ -68,15 +66,6 @@ void Graph::merge_vertex(int u, int v, std::string weight) {
     
     // Очищаем список смежности v
     adj[v].clear();
-}
-
-int Graph::degree(int v) const {
-    if (v < 0 || v >= n) return -1;
-    std::set<int> unique_neighbors;
-    for (const auto& edge : adj[v]) {
-        unique_neighbors.insert(edge.first);
-    }
-    return unique_neighbors.size();
 }
 
 void Graph::simplify() {
@@ -114,7 +103,50 @@ void Graph::simplify() {
     }
 }
 
+void Graph::takeaway() {
+    for (int u = 0; u < n; ++u) {
+        for (const auto& edge : adj[u]) {
+            if (u == edge.first) {
+                r = r + " * (" + edge.second + ")";
+                remove_edge(u, u, edge.second);
+            }
+            if (edge.second == "")
+                break;
+        }       
+    }
+}
+
+void Graph::paralel() {
+    std::set<std::string> weights;
+    for (int u = 0; u < n; ++u) {
+        if (adj[u].empty())
+            continue;
+        for (const auto& edge : adj[u]) {
+            weights.insert(edge.second);
+        }
+    }
+
+    std::string result;
+    
+    for (const auto& skip : weights) {
+        if (!result.empty()) result += " + ";
+        
+        std::string product;
+        for (const auto& i : weights) {
+            if (i != skip) {
+                if (!product.empty()) product += " * ";
+                product += "(" + i + ")";
+            }
+        }
+        result += product;
+    }
+    
+    r = r + ((r == "") ? ("(" + result + ")") : ("* (" + result + ")")) ;
+    finished = true;
+}
+
 void Graph::print() const {
+    std::cout << r << std::endl;
     for (int u = 0; u < n; ++u) {
         std::cout << "Vertex " << u + 1 << ": ";
         for (const auto& edge : adj[u]) {
@@ -145,6 +177,75 @@ bool Graph::is_connected() const {
         }
     }
     return count == n;
+}
+
+int Graph::vertex_count() const {
+    int count = 0;
+    for (int i = 0; i < n; ++i) {
+        if (!adj[i].empty()) {
+            count++;
+        }
+    }
+    return count;
+}
+
+std::string Graph::recursive_algorithm() {
+    if (finished) {
+        return "";
+    }
+
+    // Найти любое ребро
+    int u = -1, v = -1;
+    std::string weight;
+
+    for (int i = 0; i < n; ++i) {
+        if (adj[i].empty()) continue;
+
+        for (const auto& edge : adj[i]) {
+            u = i;
+            v = edge.first;
+            weight = edge.second;
+            break;
+        }
+        if (u != -1) break;
+    }
+
+    if (u == -1) {
+        finished = true;  // нет рёбер
+        return "";
+    }
+
+    // Создаём 2 копии
+    Graph gr1 = *this;
+    gr1.remove_edge(u, v, weight);
+ 
+
+    Graph gr2 = gr1;
+    gr1.r = gr1.r + ((r == "") ? ("(" + weight + ")") : ("* (" + weight + ")")); 
+    gr2.merge_vertex(u, v, weight);
+
+    gr1.simplify();
+    gr1.takeaway();
+    if (gr1.vertex_count() == 2) {
+        gr1.paralel();
+    }
+    gr2.simplify();
+    gr2.takeaway();
+    if (gr2.vertex_count() == 2) {
+        gr2.paralel();
+    }
+
+    // Рекурсивно вызываем для каждого
+    std::string result1 = gr1.recursive_algorithm();
+    std::string result2 = gr2.recursive_algorithm();
+
+    finished = true;
+
+    // Если результаты пустые, используем r
+    if (result1.empty()) result1 = gr1.r;
+    if (result2.empty()) result2 = gr2.r;
+
+    return "(" + result1 + ") + (" + result2 + ")";
 }
 
 // Реализация TreeResult

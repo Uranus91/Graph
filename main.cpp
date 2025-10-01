@@ -22,33 +22,8 @@ int main() {
 
     std::cout << "Original graph:" << std::endl;
     gr.print();
+    std::cout << "\n" << gr.recursive_algorithm();
 
-    if (!gr.is_connected()) {
-        std::cout << "Graph is not connected." << std::endl;
-        return 0;
-    }
-    std::cout << gr.degree(1) << std::endl;
-    gr.simplify();
-    std::cout << "\nSimplyfied:\n";
-    
-    gr.print();
-    std::cout << std::endl;
-    
-    Graph gr1 = gr;
-    gr1.remove_edge(0, 1, "R1");
-    gr1.r = "R1";
-    Graph gr2 = gr1;
-    gr2.merge_vertex(0, 1, "R1");
-    gr1.simplify();
-    gr2.simplify();
-    gr1.print();
-    
-    std::cout << std::endl;
-    gr2.print();
-
-
-    // Graph::TreeResult tree = gr.make_tree();
-    // tree.print();
 
     return 0;
 }
