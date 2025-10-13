@@ -26,6 +26,7 @@ public:
 
     void print() const;
     int vertex_count() const;
+    int edges_count() const;
     bool is_connected() const;
     struct TreeResult;  // ← forward declaration
 

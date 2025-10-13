@@ -22,6 +22,9 @@ int main() {
 
     std::cout << "Original graph:" << std::endl;
     gr.print();
+    gr.simplify();
+    gr.print();
+    std::cout << "Unique edges: " << gr.edges_count() << std::endl;
     std::cout << "\n" << gr.recursive_algorithm();
 
 
