@@ -4,6 +4,7 @@
 #include <queue>
 #include <stdexcept>
 #include <set>
+#include <map>
 
 
 Graph::Graph(int n) : n(n), adj(n), r(""), finished(false) {}
@@ -200,6 +201,32 @@ int Graph::edges_count() const {
         }
     }
     return counter.size();
+}
+
+std::vector<std::vector<std::string>> Graph::split_by_edges() const {
+    std::map<std::pair<int, int>, std::vector<std::string>> edge_map;
+
+    for (int u = 0; u < n; ++u) {
+        for (const auto& edge : adj[u]) {
+            int v = edge.first;
+            const std::string& w = edge.second;
+
+            // Нормализуем пару: меньший индекс — первый
+            if (u <= v) {
+                edge_map[{u, v}].push_back(w);
+            }
+            // Если u > v — пропускаем, чтобы не дублировать
+        }
+    }
+
+    // Извлекаем только векторы весов
+    std::vector<std::vector<std::string>> result;
+    result.reserve(edge_map.size());
+    for (const auto& kv : edge_map) {
+        result.push_back(kv.second);
+    }
+
+    return result;
 }
 
 std::string Graph::recursive_algorithm() {

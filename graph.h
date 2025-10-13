@@ -28,6 +28,7 @@ public:
     int vertex_count() const;
     int edges_count() const;
     bool is_connected() const;
+    std::vector<std::vector<std::string>> split_by_edges() const;
     struct TreeResult;  // ← forward declaration
 
     TreeResult make_tree() const;
