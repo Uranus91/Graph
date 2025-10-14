@@ -22,8 +22,7 @@ int main() {
 
     std::cout << "Original graph:" << std::endl;
     gr.print();
-    gr.simplify();
-    gr.print();
+    //gr.simplify();
     std::cout << "Unique edges: " << gr.edges_count() << std::endl;
 
     std::vector<std::vector<std::string>> a = gr.split_by_edges();

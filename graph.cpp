@@ -96,7 +96,7 @@ void Graph::simplify() {
                 
                 remove_edge(i, u, w1);
                 remove_edge(i, w, w2);
-                add_edge(u, w, w1 + " + " + w2);
+                add_edge(u, w, w1 + "+" + w2);
                 changed = true;
                 break;
             }
@@ -108,7 +108,7 @@ void Graph::takeaway() {
     for (int u = 0; u < n; ++u) {
         for (const auto& edge : adj[u]) {
             if (u == edge.first) {
-                r = (r != "") ? (r + " * (" + edge.second + ")") : ("(" + edge.second + ")");
+                r = (r != "") ? (r + "(" + edge.second + ")") : ("(" + edge.second + ")");
                 remove_edge(u, u, edge.second);
             }
             if (edge.second == "")
@@ -130,19 +130,19 @@ void Graph::paralel() {
     std::string result;
     
     for (const auto& skip : weights) {
-        if (!result.empty()) result += " + ";
+        if (!result.empty()) result += "+";
         
         std::string product;
         for (const auto& i : weights) {
             if (i != skip) {
-                if (!product.empty()) product += " * ";
+                if (!product.empty()) product += "";
                 product += (i.length() >= 3) ? ("(" + i + ")") : (i);
             }
         }
         result += product;
     }
     
-    r = r + ((r == "") ? ("(" + result + ")") : (" * (" + result + ")")) ;
+    r = r + ((r == "") ? ("(" + result + ")") : (" (" + result + ")")) ;
     finished = true;
 }
 
@@ -272,7 +272,7 @@ std::string Graph::recursive_algorithm() {
  
 
     Graph gr2 = gr1;
-    gr1.r = gr1.r + ((r == "" || r.size() <= 3) ? (weight ) : (" * (" + weight + ")")); 
+    gr1.r = gr1.r + ((r == "" || r.size() <= 3) ? (weight ) : (" (" + weight + ")")); 
     gr2.merge_vertex(u, v, weight);
 
     gr1.simplify();
