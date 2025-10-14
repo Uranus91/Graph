@@ -233,7 +233,18 @@ std::string Graph::recursive_algorithm() {
     if (finished) {
         return "";
     }
+    simplify();
+    takeaway();
 
+    if (edges_count() == 0) {
+        finished = true;
+        return r.empty() ? "1" : r;
+    }
+    if (vertex_count() == 2) {
+        paralel(); // это установит finished = true и заполнит r
+        finished = true;
+        return r;
+    }
     // Найти любое ребро
     int u = -1, v = -1;
     std::string weight;
