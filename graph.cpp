@@ -107,12 +107,13 @@ void Graph::simplify() {
 void Graph::takeaway() {
     for (int u = 0; u < n; ++u) {
         for (const auto& edge : adj[u]) {
+            if (edge.second == "")
+                break;
             if (u == edge.first) {
                 r = (r != "") ? (r + "(" + edge.second + ")") : ("(" + edge.second + ")");
                 remove_edge(u, u, edge.second);
             }
-            if (edge.second == "")
-                break;
+            
         }       
     }
 }
@@ -142,7 +143,7 @@ void Graph::paralel() {
         result += product;
     }
     
-    r = r + ((r == "") ? ("(" + result + ")") : (" (" + result + ")")) ;
+    r = r + ((r == "") ? ("(" + result + ")") : ("(" + result + ")")) ;
     finished = true;
 }
 
@@ -269,22 +270,31 @@ std::string Graph::recursive_algorithm() {
     // Создаём 2 копии
     Graph gr1 = *this;
     gr1.remove_edge(u, v, weight);
+    std::cout << "\n" << weight << std::endl; 
  
 
     Graph gr2 = gr1;
     gr1.r = gr1.r + ((r == "" || r.size() <= 3) ? (weight ) : (" (" + weight + ")")); 
     gr2.merge_vertex(u, v, weight);
 
+    gr1.print();
+    std::cout << std::endl;
     gr1.simplify();
     gr1.takeaway();
     if (gr1.vertex_count() == 2) {
         gr1.paralel();
     }
+        gr1.print();
+    std::cout << std::endl;
+        gr2.print();
+    std::cout << std::endl;
     gr2.simplify();
     gr2.takeaway();
     if (gr2.vertex_count() == 2) {
         gr2.paralel();
     }
+        gr2.print();
+    std::cout << std::endl;
 
     // Рекурсивно вызываем для каждого
     std::string result1 = gr1.recursive_algorithm();
