@@ -1,89 +1,67 @@
 #include "graph.h"
+#include "compare.h"
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <chrono>
+#include <string>
+
+
 
 int main() {
-    std::ifstream inFile("input.txt");
+    Graph graf("test/input6_2.txt");
+    graf.Print();  // Для наглядности: исходный граф (вне замеров)
 
-    int ver, edg;
-    inFile >> ver >> edg;
-
-    Graph gr(ver);
-    int u, v;
-    std::string weight;
-
-    for (int i = 0; i < edg; ++i) {
-        inFile >> u >> v >> weight;
-        gr.add_edge(u - 1, v - 1, weight);
-    }
-
-    inFile.close();
-
-    std::cout << "Original graph:" << std::endl;
-    gr.print();
-    gr.simplify();
-    std::cout << "Unique edges: " << gr.edges_count() << std::endl;
-
-    // === Получаем split_by_edges и выводим группы ДО замера ===
-    std::vector<std::vector<std::string>> a = gr.split_by_edges();
-    for (int i = 0; i < a.size(); i++) {
-        for (const auto& num : a[i]) {
-            std::cout << num;
-        }
-        std::cout << "\n";
-    }
-
-    // === Замер первого выражения (1000 итераций) ===
-    auto start1 = std::chrono::high_resolution_clock::now();
-    std::string answer; // будем использовать последнюю итерацию для вывода
-    for (int iter = 0; iter < 10000; ++iter) {
-        answer = ""; // ОЧИЩАЕМ ВНЕШНЮЮ переменную
-        for (int i = 0; i < a.size(); i++) {
-            std::string temp = "";
-            for (const auto& num : a[i]) {
-                temp += num;
-            }
-            for (int j = 0; j < a.size(); j++) {
-                if (i == j) continue;
-                if (a[j].size() == 2) {
-                    temp += "(" + a[j][0] + "+" + a[j][1] + ")";
-                }   
-                if (a[j].size() == 3) {
-                    temp += "(" + a[j][0] + a[j][1] + "+" + a[j][1] + a[j][2] + "+" + a[j][0] + a[j][2] + ")";
-                } 
-            }
-            answer += (answer == "") ? ("(" + temp + ")") : (" + (" + temp + ")");
-        }
-    }
-    auto end1 = std::chrono::high_resolution_clock::now();
-
-    // === Замер второго выражения (1000 итераций) ===
-
+    std::string result1, result2;
     
+    using clock = std::chrono::steady_clock;
+    constexpr size_t ITER  = 1000;
 
-    auto start2 = std::chrono::high_resolution_clock::now();
-    std::string result2;
-    for (int iter = 0; iter < 1; ++iter) {
-        Graph gr1 = gr;
-        result2 = gr1.recursive_algorithm(); // сохраняем в ВНЕШНЮЮ переменную
+    // === Замер 1: нерекурсивный метод ===
+    long long dur1 = 0;
+    for (size_t iter = 0; iter < ITER; ++iter) {
+        result1.clear();
+        Graph g1 = graf;
+        auto start1 = clock::now();
+        result1 = g1.GetDeterminantNonRecursive();
+        auto end1 = clock::now();
+
+        dur1 += std::chrono::duration_cast<std::chrono::nanoseconds>(end1 - start1).count();
     }
-    auto end2 = std::chrono::high_resolution_clock::now();
 
-    // === Вывод результатов (после замеров) ===
-    std::cout << answer << std::endl;
-    std::cout << result2 << std::endl;
+    // === Замер 2: рекурсивный метод ===
+    long long dur2 = 0;
+    for (size_t iter = 0; iter < ITER; ++iter) {
+        result2.clear();
+        Graph g2 = graf;
+        auto start2 = clock::now();
+        result2 = g2.GetDeterminantRecursive();
+        auto end2 = clock::now();
 
-    // === Вывод времени ===
-    auto duration1 = std::chrono::duration_cast<std::chrono::nanoseconds>(end1 - start1);
-    auto duration2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - start2);
+        dur2 += std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - start2).count();
+    }
 
-    std::cout << "\n--- Performance ---" << std::endl;
-    std::cout << "Time to generate first expression (answer): " 
-              << duration1.count() << " nanoseconds (for 10000 runs)" << std::endl;
-    std::cout << "Time to generate second expression (recursive_algorithm): " 
-              << duration2.count() << " nanoseconds (for 10000 runs)" << std::endl;
-    std::cout << (double)duration2.count() / duration1.count();
+    // --- Вывод выражений ---
+    std::cout << "=== Non-recursive expression ===\n";
+    std::cout << result1 << "\n\n";
+
+    std::cout << "=== Recursive expression ===\n";
+    std::cout << result2 << "\n\n";
+
+    CompareExpressions(result1, result2);
+    double avg1 = ITER ? static_cast<double>(dur1) / ITER    / 1000.0 : 0.0;
+    double avg2 = ITER ? static_cast<double>(dur2) / ITER / 1000.0 : 0.0;
+
+    std::cout << "--- Performance ---\n";
+    std::cout << "Non-recursive avg:   " << avg1 << " us/iter\n";
+    std::cout << "Recursive avg:       " << avg2 << " us/iter\n";
+
+    if (avg1 > 0.0) {
+        std::cout << "Relative (recursive / non-recursive): "
+                  << (avg2 / avg1) << "\n";
+    } else {
+        std::cout << "Relative (recursive / non-recursive): N/A (non-recursive avg is 0)\n";
+    }
 
     return 0;
 }
