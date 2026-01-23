@@ -28,7 +28,7 @@ public:
     size_t edges_count() const;
     bool   is_connected() const;
     size_t vertex_count() const;
-    std::vector<std::pair<std::string, std::string>> split_by_edges() const;
+    std::vector<std::vector<std::string>> split_by_edges() const;
 
     // ⚠️ Сделал public, чтобы рекурсивный helper в graph.cpp мог
     // читать граф (n/adj) без friend-ов.

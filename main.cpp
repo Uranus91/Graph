@@ -17,7 +17,7 @@ int main() {
     using clock = std::chrono::steady_clock;
     constexpr size_t ITER  = 1000;
 
-    // === Замер 1: нерекурсивный метод ===
+       // === Замер 1: нерекурсивный метод ===
     long long dur1 = 0;
     for (size_t iter = 0; iter < ITER; ++iter) {
         result1.clear();
@@ -49,7 +49,7 @@ int main() {
     std::cout << result2 << "\n\n";
 
     CompareExpressions(result1, result2);
-    double avg1 = ITER ? static_cast<double>(dur1) / ITER    / 1000.0 : 0.0;
+    double avg1 = ITER    ? static_cast<double>(dur1) / ITER    / 1000.0 : 0.0;
     double avg2 = ITER ? static_cast<double>(dur2) / ITER / 1000.0 : 0.0;
 
     std::cout << "--- Performance ---\n";

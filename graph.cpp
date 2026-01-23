@@ -339,122 +339,82 @@ bool Graph::is_connected() const {
     return count == n;
 }
 
-std::vector<std::pair<std::string, std::string>> Graph::split_by_edges() const {
-    // ключ = неориентированная пара вершин
+std::vector<std::vector<std::string>> Graph::split_by_edges() const {
     std::map<std::pair<size_t, size_t>, std::vector<std::string>> edge_map;
 
     for (size_t u = 0; u < n; ++u) {
-        for (const auto& e : adj[u]) {
-            size_t v = e.first;
-            if (u == v) continue;              // петли здесь не учитываем (их выносит takeaway)
-            if (u < v) edge_map[{u, v}].push_back(e.second);
+        for (const auto& edge : adj[u]) {
+            size_t v = edge.first;
+            const std::string& w = edge.second;
+            if (u <= v) edge_map[{u, v}].push_back(w);
         }
     }
 
-    std::vector<std::pair<std::string, std::string>> out;
-    out.reserve(edge_map.size());
-
-    for (auto& kv : edge_map) {
-        auto& ws = kv.second;
-        const size_t k = ws.size();
-
-        // заранее сделаем "обёрнутые" факторы, чтобы не проверять '+' много раз
-        std::vector<std::string> wf;
-        wf.reserve(k);
-        for (auto& w : ws) {
-            wf.push_back(wrap_factor(w)); // использует твою needs_parens/append_wrapped
-        }
-
-        // --- prod ---
-        std::string prod;
-        {
-            size_t cap = 0;
-            for (auto& f : wf) cap += f.size();
-            prod.reserve(cap);
-            for (auto& f : wf) prod.append(f);
-        }
-
-        // --- par ---
-        std::string par;
-        if (k <= 1) {
-        } else if (k == 2) {
-            par.reserve(wf[0].size() + 1 + wf[1].size());
-            par.append(wf[0]);
-            par.push_back('+');
-            par.append(wf[1]);
-        } else if (k == 3) {
-            auto append_prod2 = [&](size_t a, size_t b) {
-                par.append(wf[a]);
-                par.append(wf[b]);
-            };
-            // грубая оценка
-            par.reserve((wf[0].size()+wf[1].size())*3 + 2);
-            append_prod2(0,1); par.push_back('+');
-            append_prod2(1,2); par.push_back('+');
-            append_prod2(0,2);
-        } else if (k == 4) {
-            auto append_prod3 = [&](size_t a, size_t b, size_t c) {
-                par.append(wf[a]);
-                par.append(wf[b]);
-                par.append(wf[c]);
-            };
-            par.reserve(prod.size()*4 + 3);
-            append_prod3(0,1,2); par.push_back('+');
-            append_prod3(0,1,3); par.push_back('+');
-            append_prod3(0,2,3); par.push_back('+');
-            append_prod3(1,2,3);
-        } else {
-
-            par.reserve(k * (prod.size() + 1));
-            for (size_t skip = 0; skip < k; ++skip) {
-                if (!par.empty()) par.push_back('+');
-                for (size_t j = 0; j < k; ++j) {
-                    if (j == skip) continue;
-                    par.append(wf[j]);
-                }
-            }
-        }
-
-        out.push_back({std::move(prod), std::move(par)});
-    }
-
-    return out;
+    std::vector<std::vector<std::string>> result;
+    result.reserve(edge_map.size());
+    for (const auto& kv : edge_map) result.push_back(kv.second);
+    return result;
 }
-
 
 // -----------------
 // Non-recursive determinant
 // -----------------
 
 std::string Graph::GetDeterminantNonRecursive() {
-    // Лучше работать на копии, чтобы не портить исходный граф:
-    // Graph g = *this; return g.GetDeterminantNonRecursive();
-    // но если ты оставляешь как есть — помни, что simplify/takeaway меняют граф.
-
     simplify();
     std::string prefix = takeaway();
 
-    auto groups = split_by_edges(); // vector<pair<string,string>>: {prod, par}
+    auto groups = split_by_edges();
 
     std::string expr;
-    expr.reserve(512);
+    expr.reserve(512); // грубый старт
 
     for (size_t i = 0; i < groups.size(); ++i) {
         std::string temp;
         temp.reserve(256);
 
-        // string_view тут полезен: не копируем строки из groups
-        std::string_view prod_i = groups[i].first;
-        append_wrapped(temp, prod_i);
+        // собственная нить: произведение факторов
+        for (const auto& num : groups[i]) {
+            append_wrapped(temp, num);
+        }
 
+        // остальные группы: добавляем по правилам
         for (size_t j = 0; j < groups.size(); ++j) {
             if (i == j) continue;
 
-            std::string_view par_j = groups[j].second;
-            if (par_j.empty()) continue;        // 1 ребро -> ничего не домножаем (как *1)
+            const auto& gj = groups[j];
 
-            // Важно: par_j это выражение с '+', значит append_wrapped сам добавит скобки
-            append_wrapped(temp, par_j);
+            if (gj.size() == 2) {
+                temp.push_back('(');
+                append_wrapped(temp, gj[0]);
+                temp.push_back('+');
+                append_wrapped(temp, gj[1]);
+                temp.push_back(')');
+            }
+            else if (gj.size() == 3) {
+                temp.push_back('(');
+                append_wrapped(temp, gj[0]); append_wrapped(temp, gj[1]);
+                temp.push_back('+');
+                append_wrapped(temp, gj[1]); append_wrapped(temp, gj[2]);
+                temp.push_back('+');
+                append_wrapped(temp, gj[0]); append_wrapped(temp, gj[2]);
+                temp.push_back(')');
+            }
+            else if (gj.size() == 4) {
+                temp.push_back('(');
+                // 012
+                append_wrapped(temp, gj[0]); append_wrapped(temp, gj[1]); append_wrapped(temp, gj[2]);
+                temp.push_back('+');
+                // 013
+                append_wrapped(temp, gj[0]); append_wrapped(temp, gj[1]); append_wrapped(temp, gj[3]);
+                temp.push_back('+');
+                // 023
+                append_wrapped(temp, gj[0]); append_wrapped(temp, gj[2]); append_wrapped(temp, gj[3]);
+                temp.push_back('+');
+                // 123
+                append_wrapped(temp, gj[1]); append_wrapped(temp, gj[2]); append_wrapped(temp, gj[3]);
+                temp.push_back(')');
+            }
         }
 
         if (expr.empty()) {
@@ -478,10 +438,8 @@ std::string Graph::GetDeterminantNonRecursive() {
         out.push_back(')');
         return out;
     }
-
     return expr;
 }
-
 
 // -----------------
 // Recursive determinant
