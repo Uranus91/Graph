@@ -3,43 +3,22 @@
 
 #include <string>
 #include <vector>
-#include <map>
-#include <algorithm>
-#include <limits>
+#include <array>
 
-enum class Dir : unsigned char { Undirected, UtoV, VtoU };
 
 struct Edge {
-    size_t u = 0;
-    size_t v = 0;
-    std::string weight;
+    size_t u = 0, v = 0;
+    std::array<std::string, 2> weight; // [0]=hh, [1]=kz
     bool is_active = true;
-    Dir dir = Dir::Undirected;
 };
 
 class Graph {
 private:
     size_t n = 0;
     std::vector<Edge> edges;
-
-    std::vector<std::vector<std::size_t>> adj;
-
-    std::string r;
-    
-
-    bool is_edge_active(size_t id) const { return edges[id].is_active; }
-    bool is_pg_edge(size_t id) const; 
-
-    bool check_degenerate_pg();
-
-    void append_to_multiplier(const std::string& w);
-    void contract_edge_by_id(size_t id);
-    bool simplify_parallel_pg_once();
-    bool simplify_pg_series_once();
-    bool finalize_pg_cycle_end();
-
-    std::vector<size_t> active_incident_edges(size_t vtx) const;
-    size_t active_degree(std::size_t v) const;
+    std::vector<std::vector<size_t>> adj;
+    std::string r = "1";
+    int sign = 1;
 
 public:
     explicit Graph(const std::string& file_path);
@@ -47,19 +26,36 @@ public:
 
     void print() const;
 
+    size_t add_edge(size_t u, size_t v, const std::string& w0, const std::string& w1);
+    void remove_edge_by_id(size_t id) {edges[id].is_active = false; }
+    void merge_vertices(size_t from, size_t to);
+
     size_t get_edge_count() const { return edges.size(); }
-    const std::string& get_multiplier() const { return r; }
     size_t n_vertices() const { return n; }
     const Edge& get_edge(size_t id) const { return edges[id]; }
+    const std::string& get_r() const { return r; }
 
+    void flip_sign() { sign *= -1; }
 
-    size_t add_edge(size_t u, size_t v, std::string weight, Dir dir = Dir::Undirected);
-    void remove_edge(size_t u, size_t v, std::string weight);
+    size_t active_degree(size_t x) const;
 
-    void remove_edge_by_id(size_t id) { edges[id].is_active = false; }
-    void restore_edge_by_id(size_t id) { edges[id].is_active = true; }
+    bool same_pg_pair(const Edge& e1, const Edge& e2) const;
+    bool is_pg_edge(const Edge& e) const;
+    std::string pg_label(const Edge& e) const;
+    void flip_pg_direction(Edge& e);
 
- // один проход 
+    void rebuild_adj();
+
+    bool simplify_pg_degenerate_once();
+
+    bool simplify_pg_pg_series_once();
+    bool simplify_pg_pg_parallel_once();
+
+    bool simplify_pg_series_once();
+    bool simplify_pg_parallel_once();
+
+    bool simplify_parallel_once();
+    bool simplify_series_once();
     void simplify();
 
 };

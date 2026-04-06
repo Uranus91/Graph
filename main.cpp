@@ -6,10 +6,9 @@
 #include <string>
 
 int main() {
-    Graph graf("test/seriespg.txt");
+    Graph graf("test/sign_check.txt");
     graf.print();
     graf.simplify();
     graf.print();
-
 
 }

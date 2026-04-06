@@ -4,173 +4,290 @@
 #include <iostream>
 #include <stdexcept>
 
-Graph::Graph(const std::string& file_path) {
-    std::ifstream in(file_path);
-    if (!in) {
-        throw std::runtime_error("Cannot open file: " + file_path);
-    }
-
-    size_t m, n;
-    in >> n >> m;
-    this->n = n;
-    edges.clear();
-    adj.assign(this->n,{});
-    edges.reserve(m);
-
-    for (size_t i = 0; i < m; i++) {
-    std::string w;
-    size_t u = 0, v = 0;
-    in >> w >> u >> v;
-
-    Dir dir = Dir::Undirected;
-    if (w == "P" || w == "G") dir = Dir::UtoV; // считаем, что запись u v означает u->v
-
-    add_edge(u - 1, v - 1, std::move(w), dir);
-}
-}
-
-Graph::Graph(size_t n_vertices) : n(n_vertices), adj(n_vertices) {}
-
-void Graph::append_to_multiplier(const std::string& w) {
-    if (w.empty()) return;
-
-    if (w == "0") {
-        r = "0";
-        return;
-    }
-
-    if (r == "0") return;
-
-    if (w == "-1") {
-        if (r.empty()) { r = "-1"; return; }
-        if (r[0] == '-') r.erase(r.begin());   // "-A" * (-1) = "A"
-        else r.insert(r.begin(), '-');         // "A" * (-1) = "-A"
-        return;
-    }
-
-    if (!r.empty()) r.push_back('*');
-    r.append(w);
-}
-
-static size_t from_node(const Edge& e) {
-    // Для PG считаем, что направление задано через e.dir
-    if (e.dir == Dir::VtoU) return e.v;
-    return e.u; // UtoV или Undirected (на Undirected лучше не полагаться)
-}
-
-static size_t to_node(const Edge& e) {
-    if (e.dir == Dir::VtoU) return e.u;
-    return e.v;
-}
-
+#include <utility>
+#include <vector>
+#include <map>
 
 void Graph::print() const {
     std::cout << "Graph\n";
     std::cout << "Vertices: " << n << "\n";
     std::cout << "Edges:    " << edges.size() << "\n";
-    std::cout << "Multiplier r: " << r << "\n";
 
     for (size_t id = 0; id < edges.size(); ++id) {
         const auto& e = edges[id];
-        std::cout << id << ": " << (e.u + 1) << " " << (e.v + 1)
-                  << " " << e.weight;
+        std::cout << id + 1 << ": "
+                  << (e.u + 1) << " " << (e.v + 1)
+                  << "  0=" << e.weight[0]
+                  << "  1=" << e.weight[1]
+                  << (e.is_active ? "   active" : "   disactivated") << "\n";
+    }
+    std::cout << "Sign: " << sign << std::endl;
+    std::cout << "Multiplier: " << this->r << std::endl;
+}
 
-        if (e.weight == "P" || e.weight == "G") {
-            if (e.dir == Dir::UtoV) std::cout << " dir: u->v";
-            else if (e.dir == Dir::VtoU) std::cout << " dir: v->u";
-            else std::cout << " dir: undirected";
+
+static bool needs_parens(const std::string& s) {
+    return s.find('+') != std::string::npos;
+}
+
+static std::string parens_if_needed(const std::string& s) {
+    if (s.empty()) return s;
+    return needs_parens(s) ? ("(" + s + ")") : s;
+}
+
+static std::string add_expr(const std::string& a, const std::string& b) {
+    if (a.empty()) return b;
+    if (b.empty()) return a;
+    return a + "+" + b;
+}
+
+static std::string mul_expr(const std::string& a, const std::string& b) {
+    if (a.empty() || a == "1") return b;
+    if (b.empty() || b == "1") return a;
+    return parens_if_needed(a) + "*" + parens_if_needed(b);
+}
+
+static std::string calc_1(const std::vector<std::string>& w) {
+    std::string p;
+    for (const auto& x : w) p = mul_expr(p, x);
+    if (p.empty()) p = "1";
+    return p;
+}
+
+static std::string calc_0(const std::vector<std::string>& par) {
+    size_t k = par.size();
+    if (k == 0) return "0";
+
+    if (k == 1) return "1";
+
+    std::vector<std::string> pref(k + 1, "1");
+    std::vector<std::string> suf(k + 1, "1");
+
+    for (size_t i = 0; i < k; ++i)
+        pref[i + 1] = mul_expr(pref[i], par[i]);
+
+    for (size_t i = k; i-- > 0; )
+        suf[i] = mul_expr(par[i], suf[i + 1]);
+
+    std::string sum;
+    for (size_t i = 0; i < k; ++i) {
+        std::string term = mul_expr(pref[i], suf[i + 1]);
+        sum = add_expr(sum, term);
+    }
+    if (sum.empty()) sum = "0";
+    return sum;
+}
+
+Graph::Graph(const std::string& file_path) {
+    std::ifstream in(file_path);
+    if (!in) throw std::runtime_error("Cannot open file: " + file_path);
+
+    size_t m = 0, nn = 0;
+    in >> nn >> m;
+    if (!in) throw std::runtime_error("Bad header read");
+
+    n = nn;
+    edges.clear();
+    adj.assign(n, {});
+
+    // для обычных рёбер
+    std::map<std::pair<size_t, size_t>, size_t> id_by_pair;
+    std::map<std::pair<size_t, size_t>, size_t> parallel_idx_by_pair;
+    std::vector<std::vector<std::string>> parallel;
+
+    for (size_t i = 0; i < m; ++i) {
+        std::string w;
+        size_t u = 0, v = 0;
+        in >> w >> u >> v;
+        if (!in) {
+            throw std::runtime_error("Bad edge read at line " + std::to_string(i + 2));
         }
 
-        std::cout << " " << (e.is_active ? "active" : "deleted") << "\n";
-    }
-}
+        --u;
+        --v;
 
-size_t Graph::add_edge(size_t u, size_t v, std::string weight, Dir dir) {
-    size_t id = edges.size();
-    edges.push_back(Edge{u, v, std::move(weight), true, dir});
+        size_t a = (u < v) ? u : v;
+        size_t b = (u < v) ? v : u;
 
-    adj[u].push_back(id);
-    if (v != u) adj[v].push_back(id);
-    return id;
-}
+        if (!w.empty() && (w[0] == 'P' || w[0] == 'G')) {
+            Edge e;
+            e.u = a;
+            e.v = b;
+            e.is_active = true;
 
-void Graph::remove_edge(size_t u, size_t v, std::string weight) {
-    for (auto& e : edges) {
-        if (!e.is_active) continue;
-        const bool same_uv = (e.u == u && e.v == v) || (e.u == v && e.v == u);
-        if (same_uv && e.weight == weight) {
-            e.is_active = false;
-            return;
+            bool forward = (u == a);  // после --u, --v; но до потери смысла направления
+            std::string label = w + (forward ? ">" : "<");
+
+            if (w[0] == 'P') {
+                e.weight[0] = label;
+                e.weight[1] = "0";
+            } else { // G
+                e.weight[0] = "0";
+                e.weight[1] = label;
+            }
+
+            size_t id = edges.size();
+            edges.push_back(std::move(e));
+
+            adj[a].push_back(id);
+            if (b != a)
+                adj[b].push_back(id);
+
+            continue;
+        }
+
+        auto key = std::make_pair(a, b);
+        auto it = id_by_pair.find(key);
+
+        if (it == id_by_pair.end()) {
+            Edge e;
+            e.u = a;
+            e.v = b;
+            e.weight[0].clear();
+            e.weight[1].clear();
+            e.is_active = true;
+
+            size_t id = edges.size();
+            edges.push_back(std::move(e));
+
+            id_by_pair[key] = id;
+            parallel_idx_by_pair[key] = parallel.size();
+            parallel.push_back({w});
+
+            adj[a].push_back(id);
+            if (b != a)
+                adj[b].push_back(id);
+
+        } else {
+            size_t pidx = parallel_idx_by_pair[key];
+            parallel[pidx].push_back(w);
         }
     }
-}
 
-void Graph::contract_edge_by_id(std::size_t id) {
-    if (id >= edges.size()) return;
-    if (!edges[id].is_active) return;
+    // считаем итоговые веса только для обычных рёбер
+    for (const auto& kv : id_by_pair) {
+        const auto& key = kv.first;
+        size_t edge_id = kv.second;
+        size_t pidx = parallel_idx_by_pair[key];
 
-    size_t u = edges[id].u;
-    size_t v = edges[id].v;
-
-    // петля: просто отключаем
-    if (u == v) {
-        edges[id].is_active = false;
-        return;
+        edges[edge_id].weight[1] = calc_1(parallel[pidx]);
+        edges[edge_id].weight[0] = calc_0(parallel[pidx]);
     }
-
-    size_t keep = u;
-    size_t kill = v;
-
-    // 1) отключаем само ребро P/G (оно схлопнулось)
-    edges[id].is_active = false;
-
-    // 2) перенаправляем все активные ребра, инцидентные kill, на keep
-    for (size_t eid : adj[kill]) {
-        if (!edges[eid].is_active) continue;
-        if (eid == id) continue; // уже отключили
-
-        auto& e = edges[eid];
-        if (e.u == kill) e.u = keep;
-        if (e.v == kill) e.v = keep;
-
-        adj[keep].push_back(eid);
-
-        // добавить eid в adj[keep], чтобы keep видел это ребро
-    }
-
-    // 3) очищаем список смежности “убитой” вершины
-    adj[kill].clear();
 }
 
-bool Graph::is_pg_edge(size_t id) const {
-    const auto& w = edges[id].weight;
-    return (w == "G" || w == "P");
-}
+Graph::Graph(size_t n_vertices) : n(n_vertices), adj(n_vertices) {}
 
-std::vector<size_t> Graph::active_incident_edges(size_t vtx) const {
-    std::vector<size_t> res;
-    for (size_t id : adj[vtx]) {
-        if (edges[id].is_active) res.push_back(id);
-    }
-    return res;
-}
-
-size_t Graph::active_degree(size_t v) const {
+size_t Graph::active_degree(size_t x) const {
     size_t deg = 0;
-    for (size_t id : adj[v]) {
+    for (size_t id : adj[x]) {
         if (edges[id].is_active) ++deg;
     }
     return deg;
 }
 
-bool Graph::check_degenerate_pg() {
-    if (r == "0") return true; // уже вырождено
+bool Graph::is_pg_edge(const Edge& e) const {
+    return (!e.weight[0].empty() && (e.weight[0][0] == 'P' || e.weight[0][0] == 'G')) ||
+           (!e.weight[1].empty() && (e.weight[1][0] == 'P' || e.weight[1][0] == 'G'));
+}
+
+std::string Graph::pg_label(const Edge& e) const {
+    if (!e.weight[0].empty() && (e.weight[0][0] == 'P' || e.weight[0][0] == 'G'))
+        return e.weight[0];
+
+    if (!e.weight[1].empty() && (e.weight[1][0] == 'P' || e.weight[1][0] == 'G'))
+        return e.weight[1];
+
+    return "";
+}
+
+bool Graph::same_pg_pair(const Edge& e1, const Edge& e2) const {
+    if (!is_pg_edge(e1) || !is_pg_edge(e2)) return false;
+
+    std::string s1 = pg_label(e1);
+    std::string s2 = pg_label(e2);
+
+    if (s1.size() < 3 || s2.size() < 3) return false;
+
+    // один должен быть P, другой G
+    bool kind_ok =
+        (s1[0] == 'P' && s2[0] == 'G') ||
+        (s1[0] == 'G' && s2[0] == 'P');
+
+    if (!kind_ok) return false;
+
+    // одинаковый индекс, без первой буквы и последнего символа направления
+    std::string idx1 = s1.substr(1, s1.size() - 2);
+    std::string idx2 = s2.substr(1, s2.size() - 2);
+
+    return idx1 == idx2;
+}
+
+void Graph::flip_pg_direction(Edge& e) {
+    if (!is_pg_edge(e)) return;
+
+    std::string* s = nullptr;
+
+    if (!e.weight[0].empty() && (e.weight[0][0] == 'P' || e.weight[0][0] == 'G'))
+        s = &e.weight[0];
+    else if (!e.weight[1].empty() && (e.weight[1][0] == 'P' || e.weight[1][0] == 'G'))
+        s = &e.weight[1];
+
+    if (!s || s->empty()) return;
+
+    if (s->back() == '>')
+        s->back() = '<';
+    else if (s->back() == '<')
+        s->back() = '>';
+}
+
+size_t Graph::add_edge(size_t u, size_t v, const std::string& w0, const std::string& w1)
+{
+    size_t a = (u < v) ? u : v;
+    size_t b = (u < v) ? v : u;
+
+    Edge e;
+    e.u = a;
+    e.v = b;
+    e.weight[0] = w0;
+    e.weight[1] = w1;
+    e.is_active = true;
+
+    size_t id = edges.size();
+    edges.push_back(std::move(e));
+
+    adj[a].push_back(id);
+    if (b != a)
+        adj[b].push_back(id);
+
+    return id;
+}
+
+void Graph::merge_vertices(size_t from, size_t to) {
+    if (from == to) return;
 
     for (size_t id = 0; id < edges.size(); ++id) {
         if (!edges[id].is_active) continue;
-        if (!is_pg_edge(id)) continue;
 
-        const auto& e = edges[id];
+        if (edges[id].u == from) edges[id].u = to;
+        if (edges[id].v == from) edges[id].v = to;
+
+        if (edges[id].u > edges[id].v) {
+            if (is_pg_edge(edges[id])) {
+                flip_pg_direction(edges[id]);
+            }
+        std::swap(edges[id].u, edges[id].v);
+}
+    }
+
+    rebuild_adj();
+}
+
+bool Graph::simplify_pg_degenerate_once() {
+    for (size_t id = 0; id < edges.size(); ++id) {
+        if (!edges[id].is_active) continue;
+        if (!is_pg_edge(edges[id])) continue;
+
+        const Edge& e = edges[id];
 
         // петля
         if (e.u == e.v) {
@@ -188,160 +305,327 @@ bool Graph::check_degenerate_pg() {
     return false;
 }
 
-bool Graph::simplify_parallel_pg_once() {
-    // key = (min(u,v), max(u,v))
-    std::map<std::pair<size_t, size_t>, std::vector<size_t>> groups;
+bool Graph::simplify_pg_pg_series_once() {
+    for (size_t x = 0; x < n; ++x) {
+        if (active_degree(x) != 2) continue;
 
-    for (size_t id = 0; id < edges.size(); ++id) {
-        if (!edges[id].is_active) continue;
-        auto u = edges[id].u;
-        auto v = edges[id].v;
-        if (u == v) continue; // петли можно отдельно обрабатывать
-        if (u > v) std::swap(u, v);
-        groups[{u, v}].push_back(id);
-    }
+        size_t id1 = (size_t)-1;
+        size_t id2 = (size_t)-1;
 
-    bool changed = false;
-
-    for (auto& kv : groups) {
-        auto& ids = kv.second;
-        if (ids.size() < 2) continue;
-
-        bool has_pg = false;
-        for (size_t id : ids) {
-            if (is_pg_edge(id)) { has_pg = true; break; }
-        }
-        if (!has_pg) continue;
-
-        // Есть P/G — значит все НЕ P/G параллельные выносим в множитель и удаляем
-        for (size_t id : ids) {
+        for (size_t id : adj[x]) {
             if (!edges[id].is_active) continue;
-            if (is_pg_edge(id)) continue;
 
-            append_to_multiplier(edges[id].weight);
-            edges[id].is_active = false;
-            changed = true;
+            if (id1 == (size_t)-1) id1 = id;
+            else {
+                id2 = id;
+                break;
+            }
         }
+
+        if (id1 == (size_t)-1 || id2 == (size_t)-1) continue;
+
+        const Edge& e1 = edges[id1];
+        const Edge& e2 = edges[id2];
+
+        if (!is_pg_edge(e1) || !is_pg_edge(e2)) continue;
+        if (!same_pg_pair(e1, e2)) continue;
+
+        std::string l1 = pg_label(e1);
+        std::string l2 = pg_label(e2);
+
+        char d1 = l1.back();
+        char d2 = l2.back();
+
+        if (d1 == d2) flip_sign();
+
+        edges[id1].is_active = false;
+        edges[id2].is_active = false;
+        rebuild_adj();
+        return true;
     }
 
-    return changed;
+    return false;
+}
+
+bool Graph::simplify_series_once() {
+    for (size_t x = 0; x < n; ++x) {
+
+        if (active_degree(x) != 2) continue;
+
+        // достаём id двух активных рёбер у вершины x
+        size_t id1 = (size_t)-1;
+        size_t id2 = (size_t)-1;
+
+        for (size_t id : adj[x]) {
+            if (!edges[id].is_active) continue;
+
+            if (id1 == (size_t)-1) id1 = id;
+            else { id2 = id; break; }
+        }
+
+        // на всякий случай (если adj странный)
+        if (id1 == (size_t)-1 || id2 == (size_t)-1) continue;
+
+        const Edge& e1 = edges[id1];
+        const Edge& e2 = edges[id2];
+
+        if (is_pg_edge(e1) || is_pg_edge(e2))
+            continue;
+
+        // внешние вершины a и b
+        size_t a = (e1.u == x) ? e1.v : e1.u;
+        size_t b = (e2.u == x) ? e2.v : e2.u;
+
+        if (a == x || b == x) continue;
+
+        // деактивируем старые
+        edges[id1].is_active = false;
+        edges[id2].is_active = false;
+
+        // создаём новое ребро
+        add_edge(std::min(a,b), std::max(a,b), 
+            mul_expr(e1.weight[0], e2.weight[0]), 
+            add_expr(mul_expr(e1.weight[0], e2.weight[1]), mul_expr(e1.weight[1], e2.weight[0])));
+        rebuild_adj();
+        return true;
+    }
+
+    return false;
 }
 
 bool Graph::simplify_pg_series_once() {
     for (size_t x = 0; x < n; ++x) {
-        auto inc = active_incident_edges(x);
-        if (inc.size() != 2) continue;
+        if (active_degree(x) != 2) continue;
 
-        size_t e1 = inc[0];
-        size_t e2 = inc[1];
+        size_t id1 = (size_t)-1;
+        size_t id2 = (size_t)-1;
 
-        const bool e1_pg = is_pg_edge(e1);
-        const bool e2_pg = is_pg_edge(e2);
+        for (size_t id : adj[x]) {
+            if (!edges[id].is_active) continue;
 
-        if (e1_pg && e2_pg) {
-            const Edge& a = edges[e1];
-            const Edge& b = edges[e2];
-
-            size_t a_from = from_node(a), a_to = to_node(a);
-            size_t b_from = from_node(b), b_to = to_node(b);
-
-            // "в одну сторону" вдоль цепочки через x
-            bool same_chain_dir =
-                (a_to == x && b_from == x) ||
-                (b_to == x && a_from == x);
-
-            if (same_chain_dir) {
-                append_to_multiplier("-1");
+            if (id1 == (size_t)-1) {
+                id1 = id;
+            } else {
+                id2 = id;
+                break;
             }
-
-            edges[e1].is_active = false;
-            edges[e2].is_active = false;
-            return true;
         }
 
-        if (e1_pg && !e2_pg) {
-            contract_edge_by_id(e2); // стягиваем обычное
-            return true;
+        if (id1 == (size_t)-1 || id2 == (size_t)-1) continue;
+
+        bool pg1 = is_pg_edge(edges[id1]);
+        bool pg2 = is_pg_edge(edges[id2]);
+
+        // нужен случай: ровно одно ребро PG
+        if (pg1 == pg2) continue;
+
+        size_t reg_id = pg1 ? id2 : id1;
+        Edge& reg = edges[reg_id];
+
+        size_t other = (reg.u == x) ? reg.v : reg.u;
+
+            this->r = mul_expr(r, reg.weight[0]);
+            reg.is_active = false;
+
+        // стягиваем вершину x в вершину other
+        merge_vertices(x, other);
+        return true;
+    }
+
+    return false;
+}
+
+bool Graph::simplify_parallel_once() {
+    // соберём группы активных ребер по паре (u,v)
+    std::map<std::pair<size_t,size_t>, std::vector<size_t>> groups;
+
+    for (size_t id = 0; id < edges.size(); ++id) {
+        if (!edges[id].is_active) continue;
+        if (is_pg_edge(edges[id])) continue;
+
+        size_t a = edges[id].u;
+        size_t b = edges[id].v;
+        if (a > b) std::swap(a,b);
+        groups[{a,b}].push_back(id);
+    }
+
+    for (auto& kv : groups) {
+        auto& ids = kv.second;
+        if (ids.size() < 2) continue; // нет параллели
+
+        size_t a = kv.first.first;
+        size_t b = kv.first.second;
+
+        // --- считаем новый вес ---
+        // w0 = product of [1]
+        std::string w0 = "1";
+        for (size_t id : ids) {
+            w0 = mul_expr(w0, edges[id].weight[1]);
         }
-        if (e2_pg && !e1_pg) {
-            contract_edge_by_id(e1); // стягиваем обычное
-            return true;
+
+        // w1 = sum over i: (ei[0] * product over j!=i ej[1])
+        // сделаем prefix/suffix по weight[1], чтобы не было O(k^2)
+        size_t k = ids.size();
+        std::vector<std::string> pref(k + 1, "1");
+        std::vector<std::string> suf(k + 1, "1");
+
+        for (size_t i = 0; i < k; ++i) {
+            pref[i+1] = mul_expr(pref[i], edges[ids[i]].weight[1]);
         }
-        if (e1_pg && e2_pg) {
-            contract_edge_by_id(e1);
+        for (size_t i = k; i-- > 0; ) {
+            suf[i] = mul_expr(edges[ids[i]].weight[1], suf[i+1]);
+        }
+
+        std::string w1;
+        for (size_t i = 0; i < k; ++i) {
+            const auto& ei = edges[ids[i]];
+            std::string others = mul_expr(pref[i], suf[i+1]);
+            std::string term = mul_expr(ei.weight[0], others);
+            w1 = add_expr(w1, term);
+        }
+        if (w1.empty()) w1 = "0";
+
+        // деактивируем старые параллельные
+        for (size_t id : ids) edges[id].is_active = false;
+
+        add_edge(a, b, w1, w0);
+        rebuild_adj();
+        return true;
+    }
+
+    return false;
+}
+
+bool Graph::simplify_pg_parallel_once() {
+    std::map<std::pair<size_t, size_t>, bool> has_pg;
+
+    // сначала отмечаем пары вершин, где есть PG
+    for (size_t id = 0; id < edges.size(); ++id) {
+        if (!edges[id].is_active) continue;
+        if (!is_pg_edge(edges[id])) continue;
+
+        size_t a = edges[id].u;
+        size_t b = edges[id].v;
+        if (a > b) std::swap(a, b);
+
+        has_pg[{a, b}] = true;
+    }
+
+    // теперь ищем обычные рёбра, параллельные PG
+    for (size_t id = 0; id < edges.size(); ++id) {
+        if (!edges[id].is_active) continue;
+        if (is_pg_edge(edges[id])) continue;
+
+        size_t a = edges[id].u;
+        size_t b = edges[id].v;
+        if (a > b) std::swap(a, b);
+
+        if (has_pg[{a, b}]) {
+            // multiply_r(edges[id].weight[1]);
+            this->r = mul_expr(r, edges[id].weight[1]);
+            edges[id].is_active = false;
+            rebuild_adj();
             return true;
         }
     }
+
+    return false;
+}
+
+bool Graph::simplify_pg_pg_parallel_once() {
+    for (size_t id1 = 0; id1 < edges.size(); ++id1) {
+        if (!edges[id1].is_active) continue;
+        if (!is_pg_edge(edges[id1])) continue;
+
+        for (size_t id2 = id1 + 1; id2 < edges.size(); ++id2) {
+            if (!edges[id2].is_active) continue;
+            if (!is_pg_edge(edges[id2])) continue;
+
+            const Edge& e1 = edges[id1];
+            const Edge& e2 = edges[id2];
+
+            if (!same_pg_pair(e1, e2)) continue;
+
+            // должны быть параллельны: одна и та же пара вершин
+            if (!(e1.u == e2.u && e1.v == e2.v)) continue;
+
+            std::string l1 = pg_label(e1);
+            std::string l2 = pg_label(e2);
+
+            char d1 = l1.back();
+            char d2 = l2.back();
+
+            if (d1 != d2) flip_sign();
+
+            size_t a = e1.u;
+            size_t b = e1.v;
+
+            edges[id1].is_active = false;
+            edges[id2].is_active = false;
+
+            merge_vertices(a, b);
+            return true;
+        }
+    }
+
     return false;
 }
 
 void Graph::simplify() {
     bool changed = true;
     while (changed) {
-        if (check_degenerate_pg()) return;
 
         changed = false;
-        if (simplify_parallel_pg_once()) changed = true;
-        if (simplify_pg_series_once()) changed = true;
 
+        if (simplify_pg_degenerate_once()) {
+            std::cout << "pg_degenerate" << std::endl;
+            return;
+        }
+        if (simplify_pg_parallel_once()) {
+            changed = true;
+            std::cout << "pg_parallel" << std::endl;
+            continue;
+        }
+        if (simplify_pg_series_once()) {
+            changed = true;
+            std::cout << "pg_series" << std::endl;
+            continue;
+        }
+        if (simplify_series_once())   { 
+            changed = true; 
+            std::cout << "series" << std::endl;
+            continue; 
+        }
+        if (simplify_parallel_once()) { 
+            changed = true; 
+            std::cout << "paralel" << std::endl;
+            continue; 
+        }
+        if (simplify_pg_pg_parallel_once()) {
+            changed = true;
+            std::cout << "pg_pg_parallel" << std::endl;
+            continue;
+        }
+        if (simplify_pg_pg_series_once()) {
+            changed = true;
+            std::cout << "pg_pg_series" << std::endl;
+            continue;
+        }
     }
-    finalize_pg_cycle_end();
 }
 
-bool Graph::finalize_pg_cycle_end() {
-    // соберём все активные ребра
-    std::vector<size_t> active;
-    active.reserve(edges.size());
+void Graph::rebuild_adj() {
+    adj.assign(n, {});
+
     for (size_t id = 0; id < edges.size(); ++id) {
-        if (edges[id].is_active) active.push_back(id);
+        if (!edges[id].is_active) continue;
+
+        size_t u = edges[id].u;
+        size_t v = edges[id].v;
+
+        adj[u].push_back(id);
+        if (u != v) {
+            adj[v].push_back(id);
+        }
     }
-
-    // должен остаться ровно контур из двух ребер P и G
-    if (active.size() != 2) return false;
-
-    size_t id1 = active[0];
-    size_t id2 = active[1];
-
-    const Edge& e1 = edges[id1];
-    const Edge& e2 = edges[id2];
-
-    // оба должны быть PG
-    if (!(is_pg_edge(id1) && is_pg_edge(id2))) return false;
-
-    // и один должен быть P, другой G (если хочешь строго)
-    bool onePoneG =
-        (e1.weight == "P" && e2.weight == "G") ||
-        (e1.weight == "G" && e2.weight == "P");
-    if (!onePoneG) return false;
-
-    // направления
-    auto from = [&](const Edge& e) -> size_t {
-        return (e.dir == Dir::VtoU) ? e.v : e.u; // UtoV
-    };
-    auto to = [&](const Edge& e) -> size_t {
-        return (e.dir == Dir::VtoU) ? e.u : e.v;
-    };
-
-    size_t f1 = from(e1), t1 = to(e1);
-    size_t f2 = from(e2), t2 = to(e2);
-
-    // “навстречу” = противоположные направления: f1==t2 && t1==f2  -> знак +
-    // “в одну сторону” = одинаково: f1==f2 && t1==t2 -> знак -
-    if (f1 == t2 && t1 == f2) {
-        if (r.empty()) r = "1";
-        edges[id1].is_active = false;
-        edges[id2].is_active = false;
-        return true;
-    }
-
-    if (f1 == f2 && t1 == t2) {
-        // знак - : домножаем на -1 и удаляем оба PG
-        append_to_multiplier("-1");
-        edges[id1].is_active = false;
-        edges[id2].is_active = false;
-        return true;
-    }
-
-    // если вдруг остались два PG, но они не образуют ожидаемый контур — не трогаем
-    return false;
 }
