@@ -6,7 +6,7 @@
 #include <string>
 
 int main() {
-    Graph graf("test/sign_check.txt");
+    Graph graf("test/input_with_ind.txt");
     graf.print();
     graf.simplify();
     graf.print();

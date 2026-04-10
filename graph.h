@@ -10,6 +10,7 @@ struct Edge {
     size_t u = 0, v = 0;
     std::array<std::string, 2> weight; // [0]=hh, [1]=kz
     bool is_active = true;
+    int edge_type = 0;
 };
 
 class Graph {
@@ -41,6 +42,7 @@ public:
 
     bool same_pg_pair(const Edge& e1, const Edge& e2) const;
     bool is_pg_edge(const Edge& e) const;
+    int pg_index(const Edge& e) const;
     std::string pg_label(const Edge& e) const;
     void flip_pg_direction(Edge& e);
 

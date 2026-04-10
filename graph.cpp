@@ -115,13 +115,16 @@ Graph::Graph(const std::string& file_path) {
             e.v = b;
             e.is_active = true;
 
-            bool forward = (u == a);  // после --u, --v; но до потери смысла направления
+            int idx = std::stoi(w.substr(1));
+            bool forward = (u == a);
             std::string label = w + (forward ? ">" : "<");
 
             if (w[0] == 'P') {
+                e.edge_type = idx;
                 e.weight[0] = label;
                 e.weight[1] = "0";
-            } else { // G
+            } else {
+                e.edge_type = -idx;
                 e.weight[0] = "0";
                 e.weight[1] = label;
             }
@@ -186,8 +189,23 @@ size_t Graph::active_degree(size_t x) const {
 }
 
 bool Graph::is_pg_edge(const Edge& e) const {
-    return (!e.weight[0].empty() && (e.weight[0][0] == 'P' || e.weight[0][0] == 'G')) ||
-           (!e.weight[1].empty() && (e.weight[1][0] == 'P' || e.weight[1][0] == 'G'));
+    return e.edge_type != 0;
+}
+
+int Graph::pg_index(const Edge& e) const {
+    return (e.edge_type >= 0) ? e.edge_type : -e.edge_type;
+}
+
+bool Graph::same_pg_pair(const Edge& e1, const Edge& e2) const {
+    if (!is_pg_edge(e1) || !is_pg_edge(e2)) return false;
+
+    // одно должно быть P, другое G
+    if ((e1.edge_type > 0 && e2.edge_type > 0) ||
+        (e1.edge_type < 0 && e2.edge_type < 0)) {
+        return false;
+    }
+
+    return pg_index(e1) == pg_index(e2);
 }
 
 std::string Graph::pg_label(const Edge& e) const {
@@ -198,28 +216,6 @@ std::string Graph::pg_label(const Edge& e) const {
         return e.weight[1];
 
     return "";
-}
-
-bool Graph::same_pg_pair(const Edge& e1, const Edge& e2) const {
-    if (!is_pg_edge(e1) || !is_pg_edge(e2)) return false;
-
-    std::string s1 = pg_label(e1);
-    std::string s2 = pg_label(e2);
-
-    if (s1.size() < 3 || s2.size() < 3) return false;
-
-    // один должен быть P, другой G
-    bool kind_ok =
-        (s1[0] == 'P' && s2[0] == 'G') ||
-        (s1[0] == 'G' && s2[0] == 'P');
-
-    if (!kind_ok) return false;
-
-    // одинаковый индекс, без первой буквы и последнего символа направления
-    std::string idx1 = s1.substr(1, s1.size() - 2);
-    std::string idx2 = s2.substr(1, s2.size() - 2);
-
-    return idx1 == idx2;
 }
 
 void Graph::flip_pg_direction(Edge& e) {
@@ -581,16 +577,6 @@ void Graph::simplify() {
             std::cout << "pg_degenerate" << std::endl;
             return;
         }
-        if (simplify_pg_parallel_once()) {
-            changed = true;
-            std::cout << "pg_parallel" << std::endl;
-            continue;
-        }
-        if (simplify_pg_series_once()) {
-            changed = true;
-            std::cout << "pg_series" << std::endl;
-            continue;
-        }
         if (simplify_series_once())   { 
             changed = true; 
             std::cout << "series" << std::endl;
@@ -600,6 +586,16 @@ void Graph::simplify() {
             changed = true; 
             std::cout << "paralel" << std::endl;
             continue; 
+        }
+        if (simplify_pg_parallel_once()) {
+            changed = true;
+            std::cout << "pg_parallel" << std::endl;
+            continue;
+        }
+        if (simplify_pg_series_once()) {
+            changed = true;
+            std::cout << "pg_series" << std::endl;
+            continue;
         }
         if (simplify_pg_pg_parallel_once()) {
             changed = true;
