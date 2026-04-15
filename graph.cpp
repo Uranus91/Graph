@@ -579,32 +579,32 @@ void Graph::simplify() {
         }
         if (simplify_series_once())   { 
             changed = true; 
-            std::cout << "series" << std::endl;
+            // std::cout << "series" << std::endl;
             continue; 
         }
         if (simplify_parallel_once()) { 
             changed = true; 
-            std::cout << "paralel" << std::endl;
+            // std::cout << "paralel" << std::endl;
             continue; 
         }
         if (simplify_pg_parallel_once()) {
             changed = true;
-            std::cout << "pg_parallel" << std::endl;
+            // std::cout << "pg_parallel" << std::endl;
             continue;
         }
         if (simplify_pg_series_once()) {
             changed = true;
-            std::cout << "pg_series" << std::endl;
+            // std::cout << "pg_series" << std::endl;
             continue;
         }
         if (simplify_pg_pg_parallel_once()) {
             changed = true;
-            std::cout << "pg_pg_parallel" << std::endl;
+            // std::cout << "pg_pg_parallel" << std::endl;
             continue;
         }
         if (simplify_pg_pg_series_once()) {
             changed = true;
-            std::cout << "pg_pg_series" << std::endl;
+            // std::cout << "pg_pg_series" << std::endl;
             continue;
         }
     }
