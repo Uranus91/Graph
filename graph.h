@@ -8,7 +8,7 @@
 
 struct Edge {
     size_t u = 0, v = 0;
-    std::array<std::string, 2> weight; // [0]=hh, [1]=kz
+    std::array<std::string, 2> weight; // [0]= Y - conductivity, [1]= Z - resistance
     bool is_active = true;
     int edge_type = 0;
 };
@@ -26,6 +26,7 @@ public:
     explicit Graph(size_t n_vertices);
 
     void print() const;
+    void print_rezult() const;
 
     size_t add_edge(size_t u, size_t v, const std::string& w0, const std::string& w1);
     void remove_edge_by_id(size_t id) {edges[id].is_active = false; }
@@ -58,6 +59,18 @@ public:
 
     bool simplify_parallel_once();
     bool simplify_series_once();
+
+    bool simplify_leaf_once();
+    bool simplify_loop_once();
+
+    bool is_solved() const;
+    size_t choose_edge_for_recursion() const;
+
+    void neutralize_edge_by_id(size_t id);
+    void contract_edge_by_id(size_t id);
+
+    std::string solve();
+
     void simplify();
 
 };

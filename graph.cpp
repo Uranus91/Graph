@@ -17,14 +17,19 @@ void Graph::print() const {
         const auto& e = edges[id];
         std::cout << id + 1 << ": "
                   << (e.u + 1) << " " << (e.v + 1)
-                  << "  0=" << e.weight[0]
-                  << "  1=" << e.weight[1]
-                  << (e.is_active ? "   active" : "   disactivated") << "\n";
+                  << "  Y = " << e.weight[0]
+                  << "  Z = " << e.weight[1]
+                  << (e.is_active ? "   active" : "   disactivated") <<   "\n";
     }
     std::cout << "Sign: " << sign << std::endl;
     std::cout << "Multiplier: " << this->r << std::endl;
 }
 
+void Graph::print_rezult() const {
+    std::cout << "Graph\n";
+    std::cout << "Sign: " << sign << std::endl;
+    std::cout << "Multiplier: " << this->r << std::endl;
+}
 
 static bool needs_parens(const std::string& s) {
     return s.find('+') != std::string::npos;
@@ -36,14 +41,17 @@ static std::string parens_if_needed(const std::string& s) {
 }
 
 static std::string add_expr(const std::string& a, const std::string& b) {
-    if (a.empty()) return b;
-    if (b.empty()) return a;
+    if (a.empty() || a == "0") return b;
+    if (b.empty() || b == "0") return a;
     return a + "+" + b;
 }
 
 static std::string mul_expr(const std::string& a, const std::string& b) {
     if (a.empty() || a == "1") return b;
     if (b.empty() || b == "1") return a;
+
+    if (a == "0" || b == "0") return "0";
+
     return parens_if_needed(a) + "*" + parens_if_needed(b);
 }
 
@@ -180,12 +188,35 @@ Graph::Graph(const std::string& file_path) {
 
 Graph::Graph(size_t n_vertices) : n(n_vertices), adj(n_vertices) {}
 
+size_t Graph::choose_edge_for_recursion() const {
+    for (size_t id = 0; id < edges.size(); ++id) {
+        if (!edges[id].is_active) continue;
+
+        // P/G пока не выносим рекурсивно
+        if (is_pg_edge(edges[id])) continue;
+
+        return id;
+    }
+
+    return static_cast<size_t>(-1);
+}
+
 size_t Graph::active_degree(size_t x) const {
     size_t deg = 0;
     for (size_t id : adj[x]) {
         if (edges[id].is_active) ++deg;
     }
     return deg;
+}
+
+bool Graph::is_solved() const {
+    for (const auto& e : edges) {
+        if (e.is_active) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool Graph::is_pg_edge(const Edge& e) const {
@@ -278,6 +309,36 @@ void Graph::merge_vertices(size_t from, size_t to) {
     rebuild_adj();
 }
 
+void Graph::neutralize_edge_by_id(size_t id) {
+    if (id >= edges.size()) return;
+    if (!edges[id].is_active) return;
+    if (is_pg_edge(edges[id])) return;
+
+    // нейтрализация ребра: выносим сопротивление Z
+    r = mul_expr(r, edges[id].weight[1]);
+
+    edges[id].is_active = false;
+    rebuild_adj();
+}
+
+void Graph::contract_edge_by_id(size_t id) {
+    if (id >= edges.size()) return;
+    if (!edges[id].is_active) return;
+    if (is_pg_edge(edges[id])) return;
+
+    // важно сохранить концы ДО отключения ребра
+    size_t u = edges[id].u;
+    size_t v = edges[id].v;
+
+    // стягивание ребра: выносим проводимость Y
+    r = mul_expr(r, edges[id].weight[0]);
+
+    edges[id].is_active = false;
+
+    // стягиваем одну вершину в другую
+    merge_vertices(u, v);
+}
+
 bool Graph::simplify_pg_degenerate_once() {
     for (size_t id = 0; id < edges.size(); ++id) {
         if (!edges[id].is_active) continue;
@@ -294,6 +355,44 @@ bool Graph::simplify_pg_degenerate_once() {
         // лист
         if (active_degree(e.u) == 1 || active_degree(e.v) == 1) {
             r = "0";
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool Graph::simplify_loop_once() {
+    for (size_t id = 0; id < edges.size(); ++id) {
+        if (!edges[id].is_active) continue;
+        if (is_pg_edge(edges[id])) continue;
+
+        Edge& e = edges[id];
+
+        if (e.u == e.v) {
+            r = mul_expr(r, e.weight[1]); // Z
+            e.is_active = false;
+            rebuild_adj();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool Graph::simplify_leaf_once() {
+    for (size_t id = 0; id < edges.size(); ++id) {
+        if (!edges[id].is_active) continue;
+        if (is_pg_edge(edges[id])) continue;
+
+        Edge& e = edges[id];
+
+        if (e.u == e.v) continue; // петли отдельно
+
+        if (active_degree(e.u) == 1 || active_degree(e.v) == 1) {
+            r = mul_expr(r, e.weight[0]); // Y
+            e.is_active = false;
+            rebuild_adj();
             return true;
         }
     }
@@ -577,34 +676,45 @@ void Graph::simplify() {
             std::cout << "pg_degenerate" << std::endl;
             return;
         }
+        if (simplify_loop_once()) {
+            changed = true;
+            std::cout << "loop" << std::endl;
+            continue;
+        }
+
+        if (simplify_leaf_once()) {
+            changed = true;
+            std::cout << "leaf" << std::endl;
+            continue;
+        }
         if (simplify_series_once())   { 
             changed = true; 
-            // std::cout << "series" << std::endl;
+            std::cout << "series" << std::endl;
             continue; 
         }
         if (simplify_parallel_once()) { 
             changed = true; 
-            // std::cout << "paralel" << std::endl;
+            std::cout << "paralel" << std::endl;
             continue; 
         }
         if (simplify_pg_parallel_once()) {
             changed = true;
-            // std::cout << "pg_parallel" << std::endl;
+            std::cout << "pg_parallel" << std::endl;
             continue;
         }
         if (simplify_pg_series_once()) {
             changed = true;
-            // std::cout << "pg_series" << std::endl;
+            std::cout << "pg_series" << std::endl;
             continue;
         }
         if (simplify_pg_pg_parallel_once()) {
             changed = true;
-            // std::cout << "pg_pg_parallel" << std::endl;
+            std::cout << "pg_pg_parallel" << std::endl;
             continue;
         }
         if (simplify_pg_pg_series_once()) {
             changed = true;
-            // std::cout << "pg_pg_series" << std::endl;
+            std::cout << "pg_pg_series" << std::endl;
             continue;
         }
     }
@@ -624,4 +734,44 @@ void Graph::rebuild_adj() {
             adj[v].push_back(id);
         }
     }
+}
+
+std::string Graph::solve() {
+    simplify();
+
+    if (r == "0") {
+        return "0";
+    }
+
+    if (is_solved()) {
+        if (sign == -1) {
+            return mul_expr("-1", r);
+        }
+
+        return r;
+    }
+
+    size_t edge_id = choose_edge_for_recursion();
+
+    if (edge_id == static_cast<size_t>(-1)) {
+        // Сюда попадём, если обычных рёбер уже нет,
+        // но какие-то P/G почему-то остались и simplify их не добил.
+        // Пока возвращаем накопленный множитель.
+        if (sign == -1) {
+            return mul_expr("-1", r);
+        }
+
+        return r;
+    }
+
+    Graph neutralized = *this;
+    Graph contracted = *this;
+
+    neutralized.neutralize_edge_by_id(edge_id);
+    contracted.contract_edge_by_id(edge_id);
+
+    std::string res_neutralized = neutralized.solve();
+    std::string res_contracted = contracted.solve();
+
+    return add_expr(res_neutralized, res_contracted);
 }
