@@ -326,7 +326,7 @@ void Graph::contract_edge_by_id(size_t id) {
     if (!edges[id].is_active) return;
     if (is_pg_edge(edges[id])) return;
 
-    // важно сохранить концы ДО отключения ребра
+
     size_t u = edges[id].u;
     size_t v = edges[id].v;
 
@@ -458,7 +458,7 @@ bool Graph::simplify_series_once() {
             else { id2 = id; break; }
         }
 
-        // на всякий случай (если adj странный)
+        // на всякий случай 
         if (id1 == (size_t)-1 || id2 == (size_t)-1) continue;
 
         const Edge& e1 = edges[id1];
@@ -558,8 +558,6 @@ bool Graph::simplify_parallel_once() {
             w0 = mul_expr(w0, edges[id].weight[1]);
         }
 
-        // w1 = sum over i: (ei[0] * product over j!=i ej[1])
-        // сделаем prefix/suffix по weight[1], чтобы не было O(k^2)
         size_t k = ids.size();
         std::vector<std::string> pref(k + 1, "1");
         std::vector<std::string> suf(k + 1, "1");
@@ -616,7 +614,7 @@ bool Graph::simplify_pg_parallel_once() {
         if (a > b) std::swap(a, b);
 
         if (has_pg[{a, b}]) {
-            // multiply_r(edges[id].weight[1]);
+            
             this->r = mul_expr(r, edges[id].weight[1]);
             edges[id].is_active = false;
             rebuild_adj();
@@ -641,7 +639,7 @@ bool Graph::simplify_pg_pg_parallel_once() {
 
             if (!same_pg_pair(e1, e2)) continue;
 
-            // должны быть параллельны: одна и та же пара вершин
+            // должны быть параллельны
             if (!(e1.u == e2.u && e1.v == e2.v)) continue;
 
             std::string l1 = pg_label(e1);
@@ -756,7 +754,7 @@ std::string Graph::solve() {
     if (edge_id == static_cast<size_t>(-1)) {
         // Сюда попадём, если обычных рёбер уже нет,
         // но какие-то P/G почему-то остались и simplify их не добил.
-        // Пока возвращаем накопленный множитель.
+
         if (sign == -1) {
             return mul_expr("-1", r);
         }
