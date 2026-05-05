@@ -20,6 +20,9 @@ private:
     std::vector<std::vector<size_t>> adj;
     std::string r = "1";
     int sign = 1;
+    size_t max_recursion_depth = 0;
+
+    std::string solve_impl(size_t depth);
 
 public:
     explicit Graph(const std::string& file_path);
@@ -36,6 +39,7 @@ public:
     size_t n_vertices() const { return n; }
     const Edge& get_edge(size_t id) const { return edges[id]; }
     const std::string& get_r() const { return r; }
+    size_t get_max_recursion_depth() const { return max_recursion_depth; }
 
     void flip_sign() { sign *= -1; }
 

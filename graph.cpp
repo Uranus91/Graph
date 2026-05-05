@@ -671,48 +671,48 @@ void Graph::simplify() {
         changed = false;
 
         if (simplify_pg_degenerate_once()) {
-            std::cout << "pg_degenerate" << std::endl;
+            // std::cout << "pg_degenerate" << std::endl;
             return;
         }
         if (simplify_loop_once()) {
             changed = true;
-            std::cout << "loop" << std::endl;
+            // std::cout << "loop" << std::endl;
             continue;
         }
 
         if (simplify_leaf_once()) {
             changed = true;
-            std::cout << "leaf" << std::endl;
+            // std::cout << "leaf" << std::endl;
             continue;
         }
         if (simplify_series_once())   { 
             changed = true; 
-            std::cout << "series" << std::endl;
+            // std::cout << "series" << std::endl;
             continue; 
         }
         if (simplify_parallel_once()) { 
             changed = true; 
-            std::cout << "paralel" << std::endl;
+            // std::cout << "paralel" << std::endl;
             continue; 
         }
         if (simplify_pg_parallel_once()) {
             changed = true;
-            std::cout << "pg_parallel" << std::endl;
+            // std::cout << "pg_parallel" << std::endl;
             continue;
         }
         if (simplify_pg_series_once()) {
             changed = true;
-            std::cout << "pg_series" << std::endl;
+            // std::cout << "pg_series" << std::endl;
             continue;
         }
         if (simplify_pg_pg_parallel_once()) {
             changed = true;
-            std::cout << "pg_pg_parallel" << std::endl;
+            // std::cout << "pg_pg_parallel" << std::endl;
             continue;
         }
         if (simplify_pg_pg_series_once()) {
             changed = true;
-            std::cout << "pg_pg_series" << std::endl;
+            // std::cout << "pg_pg_series" << std::endl;
             continue;
         }
     }
@@ -734,7 +734,11 @@ void Graph::rebuild_adj() {
     }
 }
 
-std::string Graph::solve() {
+std::string Graph::solve_impl(size_t depth) {
+    if (depth > max_recursion_depth) {
+        max_recursion_depth = depth;
+    }
+
     simplify();
 
     if (r == "0") {
@@ -768,8 +772,20 @@ std::string Graph::solve() {
     neutralized.neutralize_edge_by_id(edge_id);
     contracted.contract_edge_by_id(edge_id);
 
-    std::string res_neutralized = neutralized.solve();
-    std::string res_contracted = contracted.solve();
+    std::string res_neutralized = neutralized.solve_impl(depth + 1);
+    std::string res_contracted = contracted.solve_impl(depth + 1);
+
+    if (neutralized.get_max_recursion_depth() > max_recursion_depth) {
+        max_recursion_depth = neutralized.get_max_recursion_depth();
+    }
+    if (contracted.get_max_recursion_depth() > max_recursion_depth) {
+        max_recursion_depth = contracted.get_max_recursion_depth();
+    }
 
     return add_expr(res_neutralized, res_contracted);
+}
+
+std::string Graph::solve() {
+    max_recursion_depth = 0;
+    return solve_impl(1);
 }
