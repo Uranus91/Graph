@@ -2,11 +2,11 @@
 
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 
 #include <utility>
 #include <vector>
-#include <map>
 
 void Graph::print() const {
     std::cout << "Graph\n";
@@ -51,7 +51,6 @@ static std::string mul_expr(const std::string& a, const std::string& b) {
     if (b.empty() || b == "1") return a;
 
     if (a == "0" || b == "0") return "0";
-
     return parens_if_needed(a) + "*" + parens_if_needed(b);
 }
 
