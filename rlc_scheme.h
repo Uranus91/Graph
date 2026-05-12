@@ -64,6 +64,10 @@ public:
 
     GeneratedScheme build_by_mask(const SchemeMask& mask) const;
 
+    std::vector<std::string> solve_by_masks() const;
+
+    std::string build_polynomial() const;
+
     void print() const;
 };
 

@@ -35,11 +35,35 @@ static std::string type_to_string(ElementType type) {
     return "?";
 }
 
+static bool has_top_level_plus(const std::string& s) {
+    int balance = 0;
+
+    for (char c : s) {
+        if (c == '(') {
+            ++balance;
+        } else if (c == ')') {
+            --balance;
+        } else if (c == '+' && balance == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static std::string parens_if_needed(const std::string& s) {
+    if (s.empty()) return s;
+
+    return has_top_level_plus(s) ? "(" + s + ")" : s;
+}
+
 static std::string mul_string(const std::string& a, const std::string& b) {
     if (a.empty() || a == "1") return b;
     if (b.empty() || b == "1") return a;
+
     if (a == "0" || b == "0") return "0";
-    return a + "*" + b;
+
+    return parens_if_needed(a) + "*" + parens_if_needed(b);
 }
 
 static std::string add_string(const std::string& a, const std::string& b) {
@@ -281,6 +305,35 @@ GeneratedScheme RLCScheme::build_by_mask(const SchemeMask& mask) const {
     return GeneratedScheme{graph, multiplier, p_degree};
 }
 
+std::vector<std::string> RLCScheme::solve_by_masks() const {
+    if (reactive_count > MAX_REACTIVE) {
+        throw std::runtime_error("Too many reactive elements for SchemeMask");
+    }
+
+    if (reactive_count >= 64) {
+        throw std::runtime_error("Too many reactive elements for uint64_t mask loop");
+    }
+
+    std::vector<std::string> coeffs(reactive_count + 1, "0");
+
+    uint64_t total_masks = 1ULL << reactive_count;
+
+    for (uint64_t value = 0; value < total_masks; ++value) {
+        SchemeMask mask(value);
+
+        GeneratedScheme generated = build_by_mask(mask);
+
+        std::string det = generated.graph.solve();
+
+        std::string term = mul_string(generated.multiplier, det);
+
+        coeffs[generated.p_degree] =
+            add_string(coeffs[generated.p_degree], term);
+    }
+
+    return coeffs;
+}
+
 void RLCScheme::print() const {
     std::cout << "RLC scheme\n";
     std::cout << "Vertices: " << n << "\n";
@@ -298,4 +351,57 @@ void RLCScheme::print() const {
                   << (e.is_active ? " active" : " inactive")
                   << "\n";
     }
+}
+
+static std::string make_polynomial_term(const std::string& coeff, size_t degree) {
+    if (coeff.empty() || coeff == "0") {
+        return "";
+    }
+
+    if (degree == 0) {
+        return coeff;
+    }
+
+    std::string c = parens_if_needed(coeff);
+
+    if (degree == 1) {
+        if (coeff == "1") return "p";
+        return "p*" + c;
+    }
+
+    if (coeff == "1") {
+        return "p^" + std::to_string(degree);
+    }
+
+    return "p^" + std::to_string(degree) + "*" + c;
+}
+
+static std::string format_polynomial(const std::vector<std::string>& coeffs) {
+    std::string result;
+
+    for (size_t i = coeffs.size(); i-- > 0; ) {
+        std::string term = make_polynomial_term(coeffs[i], i);
+
+        if (term.empty()) {
+            continue;
+        }
+
+        if (!result.empty()) {
+            result += "+";
+        }
+
+        result += term;
+    }
+
+    if (result.empty()) {
+        return "0";
+    }
+
+    return result;
+}
+
+std::string RLCScheme::build_polynomial() const {
+    std::vector<std::string> coeffs = solve_by_masks();
+
+    return format_polynomial(coeffs);
 }
