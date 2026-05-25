@@ -22,7 +22,7 @@ enum class ElementType {
 
 struct GeneratedScheme {
     Graph graph;
-    std::string multiplier;
+    long long multiplier = 1;
     size_t p_degree = 0;
 };
 
@@ -31,6 +31,7 @@ struct RLCElement {
     size_t v = 0;
 
     std::string name;
+    long long value = 0;
     ElementType type = ElementType::Resistor;
 
     bool is_active = true;
@@ -54,7 +55,7 @@ public:
     const std::vector<RLCElement>& get_elements() const;
     const RLCElement& get_element(size_t id) const;
 
-    size_t add_element(size_t u, size_t v, const std::string& name, ElementType type);
+    size_t add_element(size_t u, size_t v, const std::string& name, ElementType type, long long value);
 
     void deactivate_element(size_t id);
     void merge_vertices(size_t from, size_t to);
@@ -64,8 +65,9 @@ public:
 
     GeneratedScheme build_by_mask(const SchemeMask& mask) const;
 
-    std::vector<std::string> solve_by_masks() const;
+    std::vector<long long> solve_by_masks() const;
 
+    std::string build_polynomial(const std::vector<long long>& coeffs) const;
     std::string build_polynomial() const;
 
     void print() const;

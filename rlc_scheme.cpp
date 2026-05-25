@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -35,43 +36,6 @@ static std::string type_to_string(ElementType type) {
     return "?";
 }
 
-static bool has_top_level_plus(const std::string& s) {
-    int balance = 0;
-
-    for (char c : s) {
-        if (c == '(') {
-            ++balance;
-        } else if (c == ')') {
-            --balance;
-        } else if (c == '+' && balance == 0) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static std::string parens_if_needed(const std::string& s) {
-    if (s.empty()) return s;
-
-    return has_top_level_plus(s) ? "(" + s + ")" : s;
-}
-
-static std::string mul_string(const std::string& a, const std::string& b) {
-    if (a.empty() || a == "1") return b;
-    if (b.empty() || b == "1") return a;
-
-    if (a == "0" || b == "0") return "0";
-
-    return parens_if_needed(a) + "*" + parens_if_needed(b);
-}
-
-static std::string add_string(const std::string& a, const std::string& b) {
-    if (a.empty() || a == "0") return b;
-    if (b.empty() || b == "0") return a;
-    return a + "+" + b;
-}
-
 RLCScheme::RLCScheme(size_t n_vertices) : n(n_vertices), adj(n_vertices) {}
 
 RLCScheme::RLCScheme(const std::string& file_path) {
@@ -94,13 +58,16 @@ RLCScheme::RLCScheme(const std::string& file_path) {
     reactive_count = 0;
 
     for (size_t i = 0; i < m; ++i) {
+        std::string line;
+        std::getline(in >> std::ws, line);
+
+        std::istringstream row(line);
         std::string name;
         size_t u = 0;
         size_t v = 0;
+        long long value = 0;
 
-        in >> name >> u >> v;
-
-        if (!in) {
+        if (!(row >> name >> u >> v >> value)) {
             throw std::runtime_error(
                 "Bad element read at line " + std::to_string(i + 2)
             );
@@ -112,7 +79,7 @@ RLCScheme::RLCScheme(const std::string& file_path) {
             );
         }
 
-        add_element(u - 1, v - 1, name, parse_type(name));
+        add_element(u - 1, v - 1, name, parse_type(name), value);
     }
 }
 
@@ -136,7 +103,7 @@ const RLCElement& RLCScheme::get_element(size_t id) const {
     return elements[id];
 }
 
-size_t RLCScheme::add_element(size_t u, size_t v, const std::string& name, ElementType type) {
+size_t RLCScheme::add_element(size_t u, size_t v, const std::string& name, ElementType type, long long value) {
     if (u >= n || v >= n) {
         throw std::runtime_error("add_element(): vertex index out of range");
     }
@@ -145,13 +112,14 @@ size_t RLCScheme::add_element(size_t u, size_t v, const std::string& name, Eleme
     e.u = u;
     e.v = v;
     e.name = name;
+    e.value = value;
     e.type = type;
     e.is_active = true;
 
     size_t id = elements.size();
     elements.push_back(std::move(e));
 
-        if (type == ElementType::Capacitor || type == ElementType::Inductor) {
+    if (type == ElementType::Capacitor || type == ElementType::Inductor) {
         ++reactive_count;
     }
 
@@ -232,7 +200,7 @@ GeneratedScheme RLCScheme::build_by_mask(const SchemeMask& mask) const {
 
     RLCScheme transformed = *this;
 
-    std::string multiplier = "1";
+    long long multiplier = 1;
     size_t p_degree = 0;
 
     size_t reactive_index = 0;
@@ -254,7 +222,7 @@ GeneratedScheme RLCScheme::build_by_mask(const SchemeMask& mask) const {
         bool is_selected = !bit;
 
         if (is_selected) {
-            multiplier = mul_string(multiplier, e.name);
+            multiplier *= e.value;
             ++p_degree;
         }
 
@@ -299,13 +267,13 @@ GeneratedScheme RLCScheme::build_by_mask(const SchemeMask& mask) const {
         }
 
         // Одиночный резистор: Y = 1, Z = R.
-        graph.add_edge(e.u, e.v, "1", e.name);
+        graph.add_edge(e.u, e.v, 1, e.value);
     }
 
     return GeneratedScheme{graph, multiplier, p_degree};
 }
 
-std::vector<std::string> RLCScheme::solve_by_masks() const {
+std::vector<long long> RLCScheme::solve_by_masks() const {
     if (reactive_count > MAX_REACTIVE) {
         throw std::runtime_error("Too many reactive elements for SchemeMask");
     }
@@ -314,7 +282,7 @@ std::vector<std::string> RLCScheme::solve_by_masks() const {
         throw std::runtime_error("Too many reactive elements for uint64_t mask loop");
     }
 
-    std::vector<std::string> coeffs(reactive_count + 1, "0");
+    std::vector<long long> coeffs(reactive_count + 1, 0);
 
     uint64_t total_masks = 1ULL << reactive_count;
 
@@ -323,12 +291,11 @@ std::vector<std::string> RLCScheme::solve_by_masks() const {
 
         GeneratedScheme generated = build_by_mask(mask);
 
-        std::string det = generated.graph.solve();
+        long long det = generated.graph.solve();
 
-        std::string term = mul_string(generated.multiplier, det);
+        long long term = generated.multiplier * det;
 
-        coeffs[generated.p_degree] =
-            add_string(coeffs[generated.p_degree], term);
+        coeffs[generated.p_degree] += term;
     }
 
     return coeffs;
@@ -347,47 +314,49 @@ void RLCScheme::print() const {
                   << type_to_string(e.type) << " "
                   << e.name << " "
                   << e.u + 1 << " "
-                  << e.v + 1
+                  << e.v + 1 << " "
+                  << e.value
                   << (e.is_active ? " active" : " inactive")
                   << "\n";
     }
 }
 
-static std::string make_polynomial_term(const std::string& coeff, size_t degree) {
-    if (coeff.empty() || coeff == "0") {
+static std::string make_polynomial_term(long long coeff, size_t degree) {
+    if (coeff == 0) {
         return "";
     }
 
     if (degree == 0) {
-        return coeff;
+        return std::to_string(coeff);
     }
 
-    std::string c = parens_if_needed(coeff);
-
+    const std::string prefix = (coeff == 1) ? "" : std::to_string(coeff);
     if (degree == 1) {
-        if (coeff == "1") return "p";
-        return "p*" + c;
+        return prefix + "p";
     }
 
-    if (coeff == "1") {
-        return "p^" + std::to_string(degree);
-    }
-
-    return "p^" + std::to_string(degree) + "*" + c;
+    return prefix + "p^" + std::to_string(degree);
 }
 
-static std::string format_polynomial(const std::vector<std::string>& coeffs) {
+static std::string format_polynomial(const std::vector<long long>& coeffs) {
     std::string result;
 
     for (size_t i = coeffs.size(); i-- > 0; ) {
-        std::string term = make_polynomial_term(coeffs[i], i);
-
-        if (term.empty()) {
+        long long coeff = coeffs[i];
+        if (coeff == 0) {
             continue;
         }
 
-        if (!result.empty()) {
-            result += "+";
+        const bool is_negative = coeff < 0;
+        long long abs_coeff = is_negative ? -coeff : coeff;
+        std::string term = make_polynomial_term(abs_coeff, i);
+
+        if (result.empty()) {
+            if (is_negative) {
+                result += "-";
+            }
+        } else {
+            result += is_negative ? " - " : " + ";
         }
 
         result += term;
@@ -401,7 +370,11 @@ static std::string format_polynomial(const std::vector<std::string>& coeffs) {
 }
 
 std::string RLCScheme::build_polynomial() const {
-    std::vector<std::string> coeffs = solve_by_masks();
+    std::vector<long long> coeffs = solve_by_masks();
 
+    return build_polynomial(coeffs);
+}
+
+std::string RLCScheme::build_polynomial(const std::vector<long long>& coeffs) const {
     return format_polynomial(coeffs);
 }

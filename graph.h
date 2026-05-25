@@ -6,10 +6,10 @@
 #include <vector>
 #include <array>
 
-
 struct Edge {
     size_t u = 0, v = 0;
-    std::array<std::string, 2> weight; // [0]= Y - conductivity, [1]= Z - resistance
+    std::array<long long, 2> weight = {0, 0}; // [0]= Y - conductivity, [1]= Z - resistance
+    std::string pg_label;
     bool is_active = true;
     int edge_type = 0;
 };
@@ -19,11 +19,11 @@ private:
     size_t n = 0;
     std::vector<Edge> edges;
     std::vector<std::vector<size_t>> adj;
-    std::string r = "1";
+    long long r = 1;
     int sign = 1;
     size_t max_recursion_depth = 0;
 
-    std::string solve_impl(size_t depth);
+    long long solve_impl(size_t depth);
 
 public:
     explicit Graph(const std::string& file_path);
@@ -32,14 +32,14 @@ public:
     void print() const;
     void print_rezult() const;
 
-    size_t add_edge(size_t u, size_t v, const std::string& w0, const std::string& w1);
+    size_t add_edge(size_t u, size_t v, long long w0, long long w1);
     void remove_edge_by_id(size_t id) {edges[id].is_active = false; }
     void merge_vertices(size_t from, size_t to);
 
     size_t get_edge_count() const { return edges.size(); }
     size_t n_vertices() const { return n; }
     const Edge& get_edge(size_t id) const { return edges[id]; }
-    const std::string& get_r() const { return r; }
+    long long get_r() const { return r; }
     size_t get_max_recursion_depth() const { return max_recursion_depth; }
 
     void flip_sign() { sign *= -1; }
@@ -74,7 +74,7 @@ public:
     void neutralize_edge_by_id(size_t id);
     void contract_edge_by_id(size_t id);
 
-    std::string solve();
+    long long solve();
 
     void simplify();
 

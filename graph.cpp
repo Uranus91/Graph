@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <stdexcept>
 
 #include <utility>
@@ -31,57 +32,32 @@ void Graph::print_rezult() const {
     std::cout << "Multiplier: " << this->r << std::endl;
 }
 
-static bool needs_parens(const std::string& s) {
-    return s.find('+') != std::string::npos;
-}
-
-static std::string parens_if_needed(const std::string& s) {
-    if (s.empty()) return s;
-    return needs_parens(s) ? ("(" + s + ")") : s;
-}
-
-static std::string add_expr(const std::string& a, const std::string& b) {
-    if (a.empty() || a == "0") return b;
-    if (b.empty() || b == "0") return a;
-    return a + "+" + b;
-}
-
-static std::string mul_expr(const std::string& a, const std::string& b) {
-    if (a.empty() || a == "1") return b;
-    if (b.empty() || b == "1") return a;
-
-    if (a == "0" || b == "0") return "0";
-    return parens_if_needed(a) + "*" + parens_if_needed(b);
-}
-
-static std::string calc_1(const std::vector<std::string>& w) {
-    std::string p;
-    for (const auto& x : w) p = mul_expr(p, x);
-    if (p.empty()) p = "1";
+static long long calc_1(const std::vector<long long>& w) {
+    long long p = 1;
+    for (const auto& x : w) p *= x;
     return p;
 }
 
-static std::string calc_0(const std::vector<std::string>& par) {
+static long long calc_0(const std::vector<long long>& par) {
     size_t k = par.size();
-    if (k == 0) return "0";
+    if (k == 0) return 0;
 
-    if (k == 1) return "1";
+    if (k == 1) return 1;
 
-    std::vector<std::string> pref(k + 1, "1");
-    std::vector<std::string> suf(k + 1, "1");
+    std::vector<long long> pref(k + 1, 1);
+    std::vector<long long> suf(k + 1, 1);
 
     for (size_t i = 0; i < k; ++i)
-        pref[i + 1] = mul_expr(pref[i], par[i]);
+        pref[i + 1] = pref[i] * par[i];
 
     for (size_t i = k; i-- > 0; )
-        suf[i] = mul_expr(par[i], suf[i + 1]);
+        suf[i] = par[i] * suf[i + 1];
 
-    std::string sum;
+    long long sum = 0;
     for (size_t i = 0; i < k; ++i) {
-        std::string term = mul_expr(pref[i], suf[i + 1]);
-        sum = add_expr(sum, term);
+        long long term = pref[i] * suf[i + 1];
+        sum += term;
     }
-    if (sum.empty()) sum = "0";
     return sum;
 }
 
@@ -100,14 +76,28 @@ Graph::Graph(const std::string& file_path) {
     // для обычных рёбер
     std::map<std::pair<size_t, size_t>, size_t> id_by_pair;
     std::map<std::pair<size_t, size_t>, size_t> parallel_idx_by_pair;
-    std::vector<std::vector<std::string>> parallel;
+    std::vector<std::vector<long long>> parallel;
 
     for (size_t i = 0; i < m; ++i) {
-        std::string w;
+        std::string line;
+        std::getline(in >> std::ws, line);
+
+        std::istringstream row(line);
+        std::string name;
         size_t u = 0, v = 0;
-        in >> w >> u >> v;
-        if (!in) {
+        long long value = 0;
+
+        if (!(row >> name >> u >> v)) {
             throw std::runtime_error("Bad edge read at line " + std::to_string(i + 2));
+        }
+
+        const bool is_pg = !name.empty() && (name[0] == 'P' || name[0] == 'G');
+        if (!is_pg && !(row >> value)) {
+            throw std::runtime_error("Bad edge value at line " + std::to_string(i + 2));
+        }
+
+        if (u == 0 || v == 0 || u > n || v > n) {
+            throw std::runtime_error("Vertex index out of range at line " + std::to_string(i + 2));
         }
 
         --u;
@@ -116,24 +106,24 @@ Graph::Graph(const std::string& file_path) {
         size_t a = (u < v) ? u : v;
         size_t b = (u < v) ? v : u;
 
-        if (!w.empty() && (w[0] == 'P' || w[0] == 'G')) {
+        if (is_pg) {
             Edge e;
             e.u = a;
             e.v = b;
             e.is_active = true;
 
-            int idx = std::stoi(w.substr(1));
+            int idx = std::stoi(name.substr(1));
             bool forward = (u == a);
-            std::string label = w + (forward ? ">" : "<");
+            e.pg_label = name + (forward ? ">" : "<");
 
-            if (w[0] == 'P') {
+            if (name[0] == 'P') {
                 e.edge_type = idx;
-                e.weight[0] = label;
-                e.weight[1] = "0";
+                e.weight[0] = 0;
+                e.weight[1] = 0;
             } else {
                 e.edge_type = -idx;
-                e.weight[0] = "0";
-                e.weight[1] = label;
+                e.weight[0] = 0;
+                e.weight[1] = 0;
             }
 
             size_t id = edges.size();
@@ -153,8 +143,8 @@ Graph::Graph(const std::string& file_path) {
             Edge e;
             e.u = a;
             e.v = b;
-            e.weight[0].clear();
-            e.weight[1].clear();
+            e.weight[0] = 0;
+            e.weight[1] = 0;
             e.is_active = true;
 
             size_t id = edges.size();
@@ -162,7 +152,7 @@ Graph::Graph(const std::string& file_path) {
 
             id_by_pair[key] = id;
             parallel_idx_by_pair[key] = parallel.size();
-            parallel.push_back({w});
+            parallel.push_back({value});
 
             adj[a].push_back(id);
             if (b != a)
@@ -170,7 +160,7 @@ Graph::Graph(const std::string& file_path) {
 
         } else {
             size_t pidx = parallel_idx_by_pair[key];
-            parallel[pidx].push_back(w);
+            parallel[pidx].push_back(value);
         }
     }
 
@@ -239,34 +229,22 @@ bool Graph::same_pg_pair(const Edge& e1, const Edge& e2) const {
 }
 
 std::string Graph::pg_label(const Edge& e) const {
-    if (!e.weight[0].empty() && (e.weight[0][0] == 'P' || e.weight[0][0] == 'G'))
-        return e.weight[0];
-
-    if (!e.weight[1].empty() && (e.weight[1][0] == 'P' || e.weight[1][0] == 'G'))
-        return e.weight[1];
-
-    return "";
+    return e.pg_label;
 }
 
 void Graph::flip_pg_direction(Edge& e) {
     if (!is_pg_edge(e)) return;
 
-    std::string* s = nullptr;
+    std::string& s = e.pg_label;
+    if (s.empty()) return;
 
-    if (!e.weight[0].empty() && (e.weight[0][0] == 'P' || e.weight[0][0] == 'G'))
-        s = &e.weight[0];
-    else if (!e.weight[1].empty() && (e.weight[1][0] == 'P' || e.weight[1][0] == 'G'))
-        s = &e.weight[1];
-
-    if (!s || s->empty()) return;
-
-    if (s->back() == '>')
-        s->back() = '<';
-    else if (s->back() == '<')
-        s->back() = '>';
+    if (s.back() == '>')
+        s.back() = '<';
+    else if (s.back() == '<')
+        s.back() = '>';
 }
 
-size_t Graph::add_edge(size_t u, size_t v, const std::string& w0, const std::string& w1)
+size_t Graph::add_edge(size_t u, size_t v, long long w0, long long w1)
 {
     size_t a = (u < v) ? u : v;
     size_t b = (u < v) ? v : u;
@@ -314,7 +292,7 @@ void Graph::neutralize_edge_by_id(size_t id) {
     if (is_pg_edge(edges[id])) return;
 
     // нейтрализация ребра: выносим сопротивление Z
-    r = mul_expr(r, edges[id].weight[1]);
+    r *= edges[id].weight[1];
 
     edges[id].is_active = false;
     rebuild_adj();
@@ -330,7 +308,7 @@ void Graph::contract_edge_by_id(size_t id) {
     size_t v = edges[id].v;
 
     // стягивание ребра: выносим проводимость Y
-    r = mul_expr(r, edges[id].weight[0]);
+    r *= edges[id].weight[0];
 
     edges[id].is_active = false;
 
@@ -347,13 +325,13 @@ bool Graph::simplify_pg_degenerate_once() {
 
         // петля
         if (e.u == e.v) {
-            r = "0";
+            r = 0;
             return true;
         }
 
         // лист
         if (active_degree(e.u) == 1 || active_degree(e.v) == 1) {
-            r = "0";
+            r = 0;
             return true;
         }
     }
@@ -369,7 +347,7 @@ bool Graph::simplify_loop_once() {
         Edge& e = edges[id];
 
         if (e.u == e.v) {
-            r = mul_expr(r, e.weight[1]); // Z
+            r *= e.weight[1]; // Z
             e.is_active = false;
             rebuild_adj();
             return true;
@@ -389,7 +367,7 @@ bool Graph::simplify_leaf_once() {
         if (e.u == e.v) continue; // петли отдельно
 
         if (active_degree(e.u) == 1 || active_degree(e.v) == 1) {
-            r = mul_expr(r, e.weight[0]); // Y
+            r *= e.weight[0]; // Y
             e.is_active = false;
             rebuild_adj();
             return true;
@@ -478,8 +456,8 @@ bool Graph::simplify_series_once() {
 
         // создаём новое ребро
         add_edge(std::min(a,b), std::max(a,b), 
-            mul_expr(e1.weight[0], e2.weight[0]), 
-            add_expr(mul_expr(e1.weight[0], e2.weight[1]), mul_expr(e1.weight[1], e2.weight[0])));
+            e1.weight[0] * e2.weight[0], 
+            e1.weight[0] * e2.weight[1] + e1.weight[1] * e2.weight[0]);
         rebuild_adj();
         return true;
     }
@@ -518,8 +496,8 @@ bool Graph::simplify_pg_series_once() {
 
         size_t other = (reg.u == x) ? reg.v : reg.u;
 
-            this->r = mul_expr(r, reg.weight[0]);
-            reg.is_active = false;
+        this->r *= reg.weight[0];
+        reg.is_active = false;
 
         // стягиваем вершину x в вершину other
         merge_vertices(x, other);
@@ -552,30 +530,29 @@ bool Graph::simplify_parallel_once() {
 
         // --- считаем новый вес ---
         // w0 = product of [1]
-        std::string w0 = "1";
+        long long w0 = 1;
         for (size_t id : ids) {
-            w0 = mul_expr(w0, edges[id].weight[1]);
+            w0 *= edges[id].weight[1];
         }
 
         size_t k = ids.size();
-        std::vector<std::string> pref(k + 1, "1");
-        std::vector<std::string> suf(k + 1, "1");
+        std::vector<long long> pref(k + 1, 1);
+        std::vector<long long> suf(k + 1, 1);
 
         for (size_t i = 0; i < k; ++i) {
-            pref[i+1] = mul_expr(pref[i], edges[ids[i]].weight[1]);
+            pref[i+1] = pref[i] * edges[ids[i]].weight[1];
         }
         for (size_t i = k; i-- > 0; ) {
-            suf[i] = mul_expr(edges[ids[i]].weight[1], suf[i+1]);
+            suf[i] = edges[ids[i]].weight[1] * suf[i+1];
         }
 
-        std::string w1;
+        long long w1 = 0;
         for (size_t i = 0; i < k; ++i) {
             const auto& ei = edges[ids[i]];
-            std::string others = mul_expr(pref[i], suf[i+1]);
-            std::string term = mul_expr(ei.weight[0], others);
-            w1 = add_expr(w1, term);
+            long long others = pref[i] * suf[i+1];
+            long long term = ei.weight[0] * others;
+            w1 += term;
         }
-        if (w1.empty()) w1 = "0";
 
         // деактивируем старые параллельные
         for (size_t id : ids) edges[id].is_active = false;
@@ -614,7 +591,7 @@ bool Graph::simplify_pg_parallel_once() {
 
         if (has_pg[{a, b}]) {
             
-            this->r = mul_expr(r, edges[id].weight[1]);
+            this->r *= edges[id].weight[1];
             edges[id].is_active = false;
             rebuild_adj();
             return true;
@@ -733,20 +710,20 @@ void Graph::rebuild_adj() {
     }
 }
 
-std::string Graph::solve_impl(size_t depth) {
+long long Graph::solve_impl(size_t depth) {
     if (depth > max_recursion_depth) {
         max_recursion_depth = depth;
     }
 
     simplify();
 
-    if (r == "0") {
-        return "0";
+    if (r == 0) {
+        return 0;
     }
 
     if (is_solved()) {
         if (sign == -1) {
-            return mul_expr("-1", r);
+            return -r;
         }
 
         return r;
@@ -759,7 +736,7 @@ std::string Graph::solve_impl(size_t depth) {
         // но какие-то P/G почему-то остались и simplify их не добил.
 
         if (sign == -1) {
-            return mul_expr("-1", r);
+            return -r;
         }
 
         return r;
@@ -771,8 +748,8 @@ std::string Graph::solve_impl(size_t depth) {
     neutralized.neutralize_edge_by_id(edge_id);
     contracted.contract_edge_by_id(edge_id);
 
-    std::string res_neutralized = neutralized.solve_impl(depth + 1);
-    std::string res_contracted = contracted.solve_impl(depth + 1);
+    long long res_neutralized = neutralized.solve_impl(depth + 1);
+    long long res_contracted = contracted.solve_impl(depth + 1);
 
     if (neutralized.get_max_recursion_depth() > max_recursion_depth) {
         max_recursion_depth = neutralized.get_max_recursion_depth();
@@ -781,10 +758,10 @@ std::string Graph::solve_impl(size_t depth) {
         max_recursion_depth = contracted.get_max_recursion_depth();
     }
 
-    return add_expr(res_neutralized, res_contracted);
+    return res_neutralized + res_contracted;
 }
 
-std::string Graph::solve() {
+long long Graph::solve() {
     max_recursion_depth = 0;
     return solve_impl(1);
 }
