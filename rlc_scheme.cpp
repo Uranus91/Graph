@@ -403,5 +403,9 @@ static std::string format_polynomial(const std::vector<std::string>& coeffs) {
 std::string RLCScheme::build_polynomial() const {
     std::vector<std::string> coeffs = solve_by_masks();
 
+    return build_polynomial(coeffs);
+}
+
+std::string RLCScheme::build_polynomial(const std::vector<std::string>& coeffs) const {
     return format_polynomial(coeffs);
 }

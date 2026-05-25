@@ -66,6 +66,7 @@ public:
 
     std::vector<std::string> solve_by_masks() const;
 
+    std::string build_polynomial(const std::vector<std::string>& coeffs) const;
     std::string build_polynomial() const;
 
     void print() const;
